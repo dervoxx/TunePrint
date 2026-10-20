@@ -1,0 +1,60 @@
+# Gradle, Kotlin i wyniki budowania
+.gradle/
+.kotlin/
+build/
+out/
+.build/
+
+# Lokalne ustawienia IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Android — lokalny SDK, narzędzia natywne i paczki
+local.properties
+keystore.properties
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+
+# iOS — zależności, wyniki budowania i ustawienia użytkownika
+DerivedData/
+Pods/
+Carthage/Build/
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.dSYM/
+
+# Sekrety i podpisywanie aplikacji
+.env
+.env.*
+!.env.example
+!.env.*.example
+secrets/
+*.jks
+*.keystore
+*.p12
+*.p8
+*.key
+*.mobileprovision
+
+# Lokalne dane, pliki tymczasowe i diagnostyka
+/docs/.local/
+/data/
+/tmp/
+*.log
+*.hprof
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
+Desktop.ini

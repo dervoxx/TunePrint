@@ -1,5 +1,5 @@
 # TunePrint
 
-Mobilna gra muzyczna dla znajomych. Na razie etap planowania.
+Etap I - plan
 
 [Opis aplikacji](docs/intro.md) · [Struktura](docs/structure.md)

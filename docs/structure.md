@@ -1,8 +1,9 @@
 # Struktura
 
-- `docs/` — dokumentacja.
-- `composeApp/` — aplikacja mobilna.
-- `server/` — backend Ktor.
-- `iosApp/` — projekt Xcode, jeśli dojdzie iOS.
+- `composeApp/` — aplikacja Kotlin Multiplatform z Compose, obecnie dla Androida.
+  `src/commonMain/` zawiera wspólny interfejs, `src/androidMain/` kod Androida.
+- `gradle/`, `gradlew`, `gradlew.bat` — Gradle Wrapper; konfiguracja budowania
+  znajduje się w katalogu głównym i module aplikacji.
+- `docs/` — dokumentacja, w tym [uruchomienie Androida](android.md).
 
-Katalogi z kodem dodamy przy implementacji.
+`server/` (Ktor) i `iosApp/` (Xcode) dodamy wraz z ich implementacją.

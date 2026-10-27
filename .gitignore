@@ -58,3 +58,6 @@ secrets/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Lokalny katalog nagrań do aplikacji
+/songs/

@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.TunePrint" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#100C18</item>
+        <item name="android:colorAccent">#7739E8</item>
+        <item name="android:statusBarColor">#100C18</item>
+        <item name="android:navigationBarColor">#100C18</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

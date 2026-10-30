@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -80,26 +81,40 @@ fun TunePrintTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Screen(compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+private fun Screen(
+    compact: Boolean = false,
+    footer: (@Composable ColumnScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Surface(color = Ink.Ground, modifier = Modifier.fillMaxSize()) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val gutter = if (maxWidth > 600.dp) 32.dp else 24.dp
-            Column(
-                Modifier.align(Alignment.TopCenter).widthIn(max = 680.dp).fillMaxWidth()
-                    .verticalScroll(rememberScrollState()).padding(horizontal = gutter, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(if (compact) 16.dp else 24.dp),
-                content = content,
-            )
+            Column(Modifier.align(Alignment.TopCenter).widthIn(max = 680.dp).fillMaxWidth().fillMaxHeight()) {
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                        .padding(horizontal = gutter, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 16.dp else 24.dp),
+                    content = content,
+                )
+                if (footer != null) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = gutter)
+                            .padding(top = 12.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        content = footer,
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun Brand(trailing: String = "") {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Rhythm(Modifier.size(26.dp), Ink.Highlight)
-            Text("TunePrint", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, letterSpacing = (-0.5).sp)
+            Text("TunePrint", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (trailing.isNotEmpty()) Text(trailing, color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
     }
@@ -125,16 +140,16 @@ private fun PrimaryAction(text: String, onClick: () -> Unit, enabled: Boolean = 
 
 @Composable
 fun LobbyScreen(nickname: String, onNicknameChange: (String) -> Unit, players: List<UiPlayer>, onStart: () -> Unit) {
-    Screen {
+    Screen(footer = { PrimaryAction("Zaczynamy", onStart, nickname.isNotBlank()) }) {
         Brand("Lobby")
         Title("Poznaj ich po muzyce.", "Jeden fragment. Czterech graczy. Czyj to utwór?")
         Surface(color = Ink.Surface, shape = RoundedCornerShape(24.dp)) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Rhythm(Modifier.fillMaxWidth().height(64.dp), Ink.Highlight)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Rule("3", "rundy")
-                    Rule("15 s", "na odpowiedź")
-                    Rule("100", "maks. punktów")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Rule("3", "rundy", Modifier.weight(1f))
+                    Rule("15 s", "na odpowiedź", Modifier.weight(1f))
+                    Rule("100", "maks. punktów", Modifier.weight(1f))
                 }
             }
         }
@@ -155,14 +170,13 @@ fun LobbyScreen(nickname: String, onNicknameChange: (String) -> Unit, players: L
                 }
             }
         }
-        PrimaryAction("Zaczynamy", onStart, nickname.isNotBlank())
         Text("Słuchaj i wybierz gracza. Im szybciej trafisz, tym więcej punktów.", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 @Composable
-private fun Rule(value: String, caption: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+private fun Rule(value: String, caption: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(value, style = MaterialTheme.typography.titleLarge)
         Text(caption, color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
     }
@@ -170,15 +184,23 @@ private fun Rule(value: String, caption: String) {
 
 @Composable
 fun CountdownScreen(round: Int, totalRounds: Int, count: Int) {
+    val fontScale = LocalDensity.current.fontScale
     Surface(color = Ink.Ground, modifier = Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp)) {
-            Column(Modifier.align(Alignment.TopCenter).widthIn(max = 632.dp)) { Brand("Runda $round z $totalRounds") }
-            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Text("Nadstaw uszu", style = MaterialTheme.typography.titleLarge, color = Ink.Muted)
-                Text(if (count > 0) "$count" else "Start", fontSize = if (count > 0) 144.sp else 72.sp, lineHeight = 160.sp, fontWeight = FontWeight.Black, color = Ink.Text)
-                Rhythm(Modifier.width(120.dp).height(40.dp), Ink.Highlight)
+        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp)) {
+            val showFooter = maxHeight > 320.dp
+            Column(Modifier.align(Alignment.Center).widthIn(max = 632.dp).fillMaxWidth().fillMaxHeight()) {
+                Brand("Runda $round z $totalRounds")
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val numberSize = (maxHeight.value * .45f / fontScale).coerceIn(24f, 144f)
+                    val roomy = maxHeight > 260.dp
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        if (roomy) Text("Nadstaw uszu", style = MaterialTheme.typography.titleLarge, color = Ink.Muted)
+                        Text(if (count > 0) "$count" else "Start", fontSize = (if (count > 0) numberSize else numberSize * .65f).sp, lineHeight = (numberSize * 1.1f).sp, fontWeight = FontWeight.Black, color = Ink.Text)
+                        if (roomy) Rhythm(Modifier.width(120.dp).height(40.dp), Ink.Highlight)
+                    }
+                }
+                if (showFooter) Text("Za chwilę usłyszysz utwór", modifier = Modifier.fillMaxWidth(), color = Ink.Muted, textAlign = TextAlign.Center)
             }
-            Text("Za chwilę usłyszysz utwór", modifier = Modifier.align(Alignment.BottomCenter), color = Ink.Muted, textAlign = TextAlign.Center)
         }
     }
 }
@@ -191,8 +213,8 @@ fun RoundScreen(
     val seconds = ceil(remainingMillis.coerceAtLeast(0) / 1000.0).toInt()
     Screen(compact = true) {
         Brand("Runda $round z $totalRounds")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text(if (selectedPlayerId == null) "Do zdobycia" else "Odpowiedź zapisana", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
                 Text(if (selectedPlayerId == null) "$availablePoints pkt" else "Czekamy na resztę", style = MaterialTheme.typography.titleLarge, color = Ink.Highlight)
             }
@@ -248,7 +270,14 @@ fun ResultsScreen(
     round: Int, totalRounds: Int, trackTitle: String, trackArtist: String, ownerName: String,
     players: List<UiPlayer>, remainingSeconds: Int, isReady: Boolean, onReady: () -> Unit,
 ) {
-    Screen {
+    Screen(footer = {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(if (round == totalRounds) "Do podsumowania" else "Kolejna runda za", color = Ink.Muted, modifier = Modifier.weight(1f))
+            Text("${remainingSeconds.coerceAtLeast(0)} s", fontWeight = FontWeight.Bold)
+        }
+        PrimaryAction(if (isReady) "Jesteś gotowy" else if (round == totalRounds) "Gotowy na wyniki" else "Jestem gotowy", onReady, !isReady)
+        Text("Gotowi: ${players.count { it.ready }} z ${players.size}", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
+    }) {
         Brand("Runda $round z $totalRounds")
         Title("Karty odkryte.", "Ten utwór należy do: $ownerName")
         Surface(color = Ink.Surface, shape = RoundedCornerShape(20.dp)) {
@@ -266,14 +295,7 @@ fun ResultsScreen(
                 ResultRow(player, index, showAnswer = true)
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (round == totalRounds) "Do podsumowania" else "Kolejna runda za", color = Ink.Muted)
-                Text("${remainingSeconds.coerceAtLeast(0)} s", fontWeight = FontWeight.Bold)
-            }
-            PrimaryAction(if (isReady) "Jesteś gotowy" else if (round == totalRounds) "Gotowy na wyniki" else "Jestem gotowy", onReady, !isReady)
-            Text("Gotowi: ${players.count { it.ready }} z ${players.size}. Gdy wszyscy będą gotowi, ruszamy od razu.", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
-        }
+        Text("Gdy wszyscy będą gotowi, ruszamy od razu.", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -282,7 +304,7 @@ fun FinalScreen(players: List<UiPlayer>, onReplay: () -> Unit) {
     val ranking = players.sortedByDescending { it.score }
     val winner = ranking.firstOrNull()
     val winners = ranking.filter { it.score == winner?.score }
-    Screen {
+    Screen(footer = { PrimaryAction("Zagrajmy jeszcze raz", onReplay) }) {
         Brand("Koniec gry")
         Title("Dobry słuch.\nDobra ekipa.", "Trzy rundy za nami. Oto końcowy ranking.")
         if (winner != null) {
@@ -298,7 +320,6 @@ fun FinalScreen(players: List<UiPlayer>, onReplay: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ranking.forEach { player -> ResultRow(player, ranking.indexOfFirst { it.score == player.score }, showAnswer = false) }
         }
-        PrimaryAction("Zagrajmy jeszcze raz", onReplay)
     }
 }
 
@@ -345,7 +366,7 @@ private fun PlayerGrid(players: List<UiPlayer>, tile: @Composable (UiPlayer, Int
 private fun Avatar(name: String, index: Int, size: Int = 44) {
     val shapes = listOf(RoundedCornerShape(14.dp), CircleShape, RoundedCornerShape(4.dp), RoundedCornerShape(topStart = 18.dp, bottomEnd = 18.dp))
     Box(Modifier.size(size.dp).background(Ink.Raised, shapes[index.mod(shapes.size)]), contentAlignment = Alignment.Center) {
-        Text(name.trim().firstOrNull()?.uppercase() ?: "?", color = Ink.Text, fontWeight = FontWeight.ExtraBold, fontSize = (size * .45f).sp)
+        Text(name.trim().firstOrNull()?.uppercase() ?: "?", color = Ink.Text, fontWeight = FontWeight.ExtraBold, fontSize = (size * .45f / LocalDensity.current.fontScale).sp)
     }
 }
 

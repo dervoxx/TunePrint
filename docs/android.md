@@ -22,4 +22,33 @@ APK powstaje w `composeApp/build/outputs/apk/debug/composeApp-debug.apk`.
 
 Wspólny ekran Compose znajduje się w `composeApp/src/commonMain/`,
 a aktywność i manifest Androida w `composeApp/src/androidMain/`.
-Na razie skonfigurowany jest tylko Android; projekt nie zawiera jeszcze rozgrywki.
+Skonfigurowany jest tylko Android. Obecna gra działa lokalnie z trzema
+symulowanymi przeciwnikami; backend i Spotify nie są jeszcze podłączone.
+
+## Nagrania i przebieg gry
+
+Przed budowaniem umieść w lokalnym, ignorowanym przez Git katalogu `songs/`:
+
+- `14 - TACO HEMINGWAY - FRASCATI.mp3` — Maja,
+- `06 Fiji.mp3` — Kuba,
+- `6. Madagaskar.mp3` — Ola.
+
+Gradle dołącza zawartość tego katalogu jako assets APK. Nagrania nie są częścią
+repozytorium. Katalog utworów i początek fragmentów definiuje `RoundTracks.kt`.
+Nie zmieniaj nazw plików bez aktualizacji katalogu. Używaj nagrań, które możesz
+wykorzystać w danym zastosowaniu.
+
+Wpisz nick i rozpocznij grę. Po odliczaniu 3–2–1 masz 15 sekund na jeden wybór
+właściciela utworu. Trafienie daje od 100 do 25 punktów, liniowo zależnie od czasu;
+błąd lub brak odpowiedzi daje 0. Runda kończy się po odpowiedzi wszystkich lub
+upływie czasu. Dopiero wtedy widać właściciela utworu i odpowiedzi graczy.
+
+Wyniki pozostają przez maksymalnie 30 sekund. Przycisk gotowości skraca przerwę,
+gdy wszyscy gracze będą gotowi. Po trzech rundach pojawia się końcowy ranking.
+Audio i zegar zatrzymują się po schowaniu aplikacji; obrót ekranu zachowuje grę.
+
+Testy logiki:
+
+```sh
+./gradlew :composeApp:testDebugUnitTest
+```

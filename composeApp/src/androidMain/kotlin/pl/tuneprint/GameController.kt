@@ -16,14 +16,15 @@ import pl.tuneprint.game.GameTrack
 
 /** Retains a local game and its audio across configuration changes. */
 class GameController(application: Application) : AndroidViewModel(application) {
-    var nickname by mutableStateOf("Ty")
-        private set
     private var session = newSession()
     var snapshot by mutableStateOf(session.snapshot)
         private set
     var audioLoading by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
+        private set
+
+    var audioLevels by mutableStateOf(emptyList<Float>())
         private set
 
     private val audio = RoundAudioPlayer(application)
@@ -38,9 +39,8 @@ class GameController(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateNickname(value: String) { nickname = value.take(20) }
-
     fun start() {
+        if (snapshot.phase != GamePhase.LOBBY) return
         session = newSession()
         session.start()
         error = null
@@ -65,6 +65,7 @@ class GameController(application: Application) : AndroidViewModel(application) {
 
     fun replay() {
         audio.stop()
+        audioLevels = emptyList()
         audioLoading = false
         error = null
         session = newSession()
@@ -91,13 +92,13 @@ class GameController(application: Application) : AndroidViewModel(application) {
         foreground = false
         handler.removeCallbacks(tick)
         audio.pause()
+        audioLevels = emptyList()
     }
 
     private fun newSession() = GameSession(
         tracks = RoundTracks.all.shuffled().map {
             GameTrack(it.assetName, it.title, it.artist, it.ownerId)
         },
-        localName = nickname,
     )
 
     private fun advanceToNow() {
@@ -107,6 +108,7 @@ class GameController(application: Application) : AndroidViewModel(application) {
         if (!foreground || audioLoading || error != null) return
         session.advance(delta.coerceAtLeast(0))
         publish()
+        audioLevels = if (snapshot.phase == GamePhase.ROUND && !audioLoading) audio.levels() else emptyList()
     }
 
     private fun publish() {
@@ -116,6 +118,7 @@ class GameController(application: Application) : AndroidViewModel(application) {
         if (snapshot.phase == GamePhase.ROUND) beginAudio()
         else {
             audio.stop()
+            audioLevels = emptyList()
             audioLoading = false
         }
     }

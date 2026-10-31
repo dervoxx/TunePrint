@@ -20,13 +20,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(
                 snapshot = game.snapshot,
-                nickname = game.nickname,
-                onNicknameChange = game::updateNickname,
                 onStart = game::start,
                 onAnswer = game::answer,
                 onReady = game::ready,
                 onReplay = game::replay,
                 audioLoading = game.audioLoading,
+                audioLevels = game.audioLevels,
                 error = game.error,
                 onRetry = game::retryAudio,
             )

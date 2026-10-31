@@ -3,6 +3,9 @@ package pl.tuneprint.audio
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicInteger
 
 /** All methods and callbacks run on the main thread. The owner controls the round duration. */
 class RoundAudioPlayer(context: Context) {
@@ -14,6 +17,13 @@ class RoundAudioPlayer(context: Context) {
     private var started = false
     private var onStarted: (() -> Unit)? = null
     private var onError: ((String) -> Unit)? = null
+    private val analysisWorker = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "TunePrint audio envelope").apply { isDaemon = true }
+    }
+    private val generation = AtomicInteger()
+    private var analysis: Future<*>? = null
+    @Volatile private var envelope: Pair<Int, FloatArray>? = null
+    private var segmentStartMs = 0
 
     fun play(
         assetName: String,
@@ -46,6 +56,8 @@ class RoundAudioPlayer(context: Context) {
                 prepared.isLooping = prepared.duration < 15_000
                 // Keep a full round available even when a supplied clip is shorter than a song.
                 val offset = startAtMs.coerceIn(0, (prepared.duration - 15_000).coerceAtLeast(0))
+                segmentStartMs = offset
+                analyze(assetName, offset)
                 if (offset == 0) {
                     ready = true
                     startIfReady()
@@ -87,6 +99,10 @@ class RoundAudioPlayer(context: Context) {
     }
 
     fun stop() {
+        generation.incrementAndGet()
+        analysis?.cancel(true)
+        analysis = null
+        envelope = null
         val previous = player
         player = null
         ready = false
@@ -99,7 +115,38 @@ class RoundAudioPlayer(context: Context) {
         previous?.release()
     }
 
-    fun release() = stop()
+    fun release() {
+        stop()
+        analysisWorker.shutdownNow()
+    }
+
+    /** Recent audio energy, oldest to newest. Call on the main thread, like other player methods. */
+    fun levels(): List<Float> {
+        val current = player ?: return List(11) { 0f }
+        val measured = envelope ?: return List(11) { 0f }
+        val bins = measured.second
+        if (!ready || !started || paused || measured.first != generation.get() || bins.isEmpty()) {
+            return List(11) { 0f }
+        }
+        val position = try {
+            current.currentPosition - segmentStartMs
+        } catch (_: IllegalStateException) {
+            return List(11) { 0f }
+        }
+        val index = position / AudioEnvelope.BIN_MS
+        return List(11) { bar -> bins.getOrNull(index - 10 + bar) ?: 0f }
+    }
+
+    private fun analyze(assetName: String, offset: Int) {
+        if (analysisWorker.isShutdown) return
+        val request = generation.get()
+        analysis = analysisWorker.submit {
+            val result = runCatching {
+                AudioEnvelope.decode(assets, assetName, offset) { request != generation.get() }
+            }.getOrElse { floatArrayOf() }
+            if (request == generation.get() && !Thread.currentThread().isInterrupted) envelope = request to result
+        }
+    }
 
     private fun startIfReady() {
         val current = player ?: return

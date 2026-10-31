@@ -3,7 +3,8 @@
 Otwórz katalog główny `TunePrint/` w Android Studio obsługującym AGP 8.11.1
 (Narwhal 2025.1.1 lub nowszym). Poczekaj na synchronizację Gradle.
 
-- Ustaw Gradle JDK na JDK 17 lub 21 (może być wbudowany JDK Android Studio).
+- Ustaw Gradle JDK na JDK 17 lub 21. Jeśli wbudowany JDK Android Studio
+  ma wersję 25 lub nowszą, wybierz osobny JDK 21 dla Gradle 8.13.
 - Zainstaluj Android SDK Platform 36 przez SDK Manager.
 - Wybierz konfigurację `composeApp`, emulator lub telefon z Androidem 7.0
   (API 24) lub nowszym i naciśnij Run.

@@ -49,14 +49,13 @@ data class GameSnapshot(
 /** Local game host. A networked game should obtain these snapshots from the server. */
 class GameSession(
     tracks: List<GameTrack>,
-    localName: String = "Ty",
     private val random: Random = Random.Default,
 ) {
     val players = listOf(
-        Player("you", localName.trim().take(20).ifBlank { "Ty" }),
-        Player("maja", "Maja"),
-        Player("kuba", "Kuba"),
-        Player("ola", "Ola"),
+        Player("you", "Olek"),
+        Player("kacper", "Kacper"),
+        Player("kamil", "Kamil"),
+        Player("ziobro", "Ziobro"),
     )
 
     private val tracks = tracks.take(3)

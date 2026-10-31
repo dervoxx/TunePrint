@@ -10,8 +10,8 @@ data class AudioTrack(
 
 object RoundTracks {
     val all = listOf(
-        AudioTrack("14 - TACO HEMINGWAY - FRASCATI.mp3", "Frascati", "maja", artist = "Taco Hemingway"),
-        AudioTrack("06 Fiji.mp3", "Fiji", "kuba", artist = "Taco Hemingway"),
-        AudioTrack("6. Madagaskar.mp3", "Madagaskar", "ola", artist = "Quebonafide"),
+        AudioTrack("14 - TACO HEMINGWAY - FRASCATI.mp3", "Frascati", "kacper", artist = "Taco Hemingway"),
+        AudioTrack("06 Fiji.mp3", "Fiji", "kamil", artist = "Taco Hemingway"),
+        AudioTrack("6. Madagaskar.mp3", "Madagaskar", "ziobro", artist = "Quebonafide"),
     )
 }

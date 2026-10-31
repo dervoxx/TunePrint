@@ -12,12 +12,29 @@ import kotlin.test.assertTrue
 class GameSessionTest {
     private fun session() = GameSession(
         listOf(
-            GameTrack("one", "Pierwszy", "Artysta", "maja"),
-            GameTrack("two", "Drugi", "Artysta", "kuba"),
-            GameTrack("three", "Trzeci", "Artysta", "ola"),
+            GameTrack("one", "Pierwszy", "Artysta", "kacper"),
+            GameTrack("two", "Drugi", "Artysta", "kamil"),
+            GameTrack("three", "Trzeci", "Artysta", "ziobro"),
         ),
         random = Random(42),
     )
+
+    @Test
+    fun everySessionUsesTheSameFixedPlayers() {
+        val expected = listOf(
+            Player("you", "Olek"),
+            Player("kacper", "Kacper"),
+            Player("kamil", "Kamil"),
+            Player("ziobro", "Ziobro"),
+        )
+        val first = session()
+        first.start()
+        first.advance(3_000)
+        first.advance(15_000)
+        assertEquals(expected, first.snapshot.players)
+        assertEquals(expected, session().snapshot.players)
+        assertEquals(expected.map { it.id }.toSet(), first.snapshot.ranking.map { it.player.id }.toSet())
+    }
 
     @Test
     fun scoreFallsFrom100To25AndClampsOutsideTheRound() {
@@ -39,7 +56,7 @@ class GameSessionTest {
         assertEquals(2, game.snapshot.countdown)
         game.advance(1_000)
         assertEquals(1, game.snapshot.countdown)
-        game.answer("maja")
+        game.answer("kacper")
         assertNull(game.snapshot.selectedOwnerId)
         game.advance(1_000)
         assertEquals(GamePhase.ROUND, game.snapshot.phase)
@@ -52,9 +69,9 @@ class GameSessionTest {
         val game = session()
         game.start()
         game.advance(3_000)
-        game.answer("maja")
-        game.answer("kuba")
-        assertEquals("maja", game.snapshot.selectedOwnerId)
+        game.answer("kacper")
+        game.answer("kamil")
+        assertEquals("kacper", game.snapshot.selectedOwnerId)
         assertEquals(GamePhase.ROUND, game.snapshot.phase)
         assertNull(game.snapshot.result)
         game.advance(12_000)
@@ -71,7 +88,7 @@ class GameSessionTest {
         game.start()
         game.advance(3_000)
         game.advance(15_000)
-        game.answer("maja")
+        game.answer("kacper")
         val answer = assertNotNull(game.snapshot.result).answers.first()
         assertFalse(answer.correct)
         assertEquals(0, answer.points)
@@ -101,7 +118,7 @@ class GameSessionTest {
         game.start()
         repeat(3) { round ->
             game.advance(3_000)
-            game.answer(listOf("maja", "kuba", "ola")[round])
+            game.answer(listOf("kacper", "kamil", "ziobro")[round])
             game.advance(12_000)
             assertEquals(GamePhase.RESULTS, game.snapshot.phase)
             assertEquals(round + 1, game.snapshot.roundNumber)

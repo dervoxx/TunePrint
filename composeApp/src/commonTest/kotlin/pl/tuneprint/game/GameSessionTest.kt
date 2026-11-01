@@ -11,6 +11,61 @@ import kotlin.test.assertTrue
 
 class GameSessionTest {
     @Test
+    fun ownerCountHintIsOptInAndVisibleOnlyDuringActualRound() {
+        val tracks = listOf(GameTrack("shared", "Wspólny", "Artysta", setOf("you", "kacper")))
+        for (showHint in listOf(false, true)) {
+            val game = GameSession(tracks, showOwnerCount = showHint)
+            assertNull(game.snapshot.ownerCountHint)
+            game.start()
+            assertNull(game.snapshot.ownerCountHint)
+            game.advance(3_000)
+            assertEquals(if (showHint) 2 else null, game.snapshot.ownerCountHint)
+            assertNull(game.snapshot.result)
+            game.advance(15_000)
+            assertNull(game.snapshot.ownerCountHint)
+            assertEquals(setOf("you", "kacper"), assertNotNull(game.snapshot.result).owners.map { it.id }.toSet())
+        }
+        val defaultGame = GameSession(tracks)
+        defaultGame.start()
+        defaultGame.advance(3_000)
+        assertNull(defaultGame.snapshot.ownerCountHint)
+    }
+
+    @Test
+    fun oneRoundGameAlwaysSelectsRequiredTrack() {
+        val pool = (1..10).map { GameTrack("track$it", "Utwór $it", "Artysta", setOf("you")) }
+        repeat(20) { seed ->
+            assertEquals(listOf(pool[4]), selectRoundTracks(pool, 1, "track5", Random(seed)))
+        }
+    }
+
+    @Test
+    fun everyRoundCountIncludesRequiredTrackExactlyOnceWithoutDuplicates() {
+        val pool = (1..10).map { GameTrack("track$it", "Utwór $it", "Artysta", setOf("you")) }
+        val requiredPositions = mutableSetOf<Int>()
+        for (count in 1..10) {
+            repeat(20) { seed ->
+                val selected = selectRoundTracks(pool, count, "track5", Random(seed))
+                assertEquals(count, selected.size)
+                assertEquals(count, selected.map { it.audioKey }.toSet().size)
+                assertEquals(1, selected.count { it.audioKey == "track5" })
+                assertTrue(selected.all { it in pool })
+                if (count == 10) requiredPositions.add(selected.indexOfFirst { it.audioKey == "track5" })
+            }
+        }
+        assertTrue(requiredPositions.size > 1)
+    }
+
+    @Test
+    fun roundSelectionRejectsMissingRequiredTrackDuplicateKeysAndInvalidCounts() {
+        val track = GameTrack("one", "Utwór", "Artysta", setOf("you"))
+        assertFailsWith<IllegalArgumentException> { selectRoundTracks(listOf(track), 1, "missing") }
+        assertFailsWith<IllegalArgumentException> { selectRoundTracks(listOf(track, track), 1, "one") }
+        assertFailsWith<IllegalArgumentException> { selectRoundTracks(listOf(track), 0, "one") }
+        assertFailsWith<IllegalArgumentException> { selectRoundTracks(listOf(track), 2, "one") }
+    }
+
+    @Test
     fun customThreeAndEightPlayerRostersCanFinishAGame() {
         for (count in listOf(3, 8)) {
             val participants = listOf(Player("you", "Olek")) +

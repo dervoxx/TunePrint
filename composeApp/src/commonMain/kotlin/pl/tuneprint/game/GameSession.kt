@@ -14,6 +14,21 @@ data class GameTrack(
     val ownerIds: Set<String>,
 )
 
+fun selectRoundTracks(
+    pool: List<GameTrack>,
+    roundCount: Int,
+    requiredAudioKey: String,
+    random: Random = Random.Default,
+): List<GameTrack> {
+    require(roundCount in 1..pool.size) { "Round count must fit the available track pool" }
+    require(pool.map { it.audioKey }.toSet().size == pool.size) { "Track pool keys must be unique" }
+    val required = requireNotNull(pool.firstOrNull { it.audioKey == requiredAudioKey }) {
+        "The required track must be present in the pool"
+    }
+    val remaining = pool.filter { it.audioKey != requiredAudioKey }.shuffled(random).take(roundCount - 1)
+    return (remaining + required).shuffled(random)
+}
+
 data class PlayerResult(
     val player: Player,
     val selectedOwnerIds: Set<String>?,
@@ -45,6 +60,7 @@ data class GameSnapshot(
     val readyPlayerIds: Set<String>,
     val ranking: List<RankingEntry>,
     val result: RoundResult?,
+    val ownerCountHint: Int?,
 )
 
 /** Local game host. A networked game should obtain these snapshots from the server. */
@@ -53,6 +69,7 @@ class GameSession(
     localName: String = "Olek",
     private val random: Random = Random.Default,
     participants: List<Player>? = null,
+    private val showOwnerCount: Boolean = false,
 ) {
     val players = participants?.toList() ?: listOf(
         Player("you", localName.trim().take(20).ifBlank { "Olek" }),
@@ -110,6 +127,7 @@ class GameSession(
                 RankingEntry(it, scores.getValue(it.id), correctCounts.getValue(it.id))
             }.sortedWith(compareByDescending<RankingEntry> { it.points }.thenByDescending { it.correctAnswers }),
             result = if (phase == GamePhase.RESULTS || phase == GamePhase.FINISHED) result else null,
+            ownerCountHint = if (showOwnerCount && phase == GamePhase.ROUND) tracks[roundIndex].ownerIds.size else null,
         )
 
     fun start() {

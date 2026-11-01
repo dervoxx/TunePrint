@@ -9,6 +9,33 @@ import kotlin.test.assertTrue
 
 class RoomLobbyTest {
     @Test
+    fun ownerCountSettingDefaultsOffAndOnlyHostCanEditItInLobby() {
+        val room = room()
+        assertFalse(room.snapshot.showOwnerCount)
+        room.setShowOwnerCount(true)
+        assertFalse(room.snapshot.showOwnerCount)
+        room.create()
+        room.setShowOwnerCount(true)
+        assertTrue(room.snapshot.showOwnerCount)
+        room.advance(1_800)
+        room.start()
+        room.setShowOwnerCount(false)
+        assertTrue(room.snapshot.showOwnerCount)
+        room.replay()
+        assertTrue(room.snapshot.showOwnerCount)
+        room.setShowOwnerCount(false)
+        assertFalse(room.snapshot.showOwnerCount)
+        room.setShowOwnerCount(true)
+        room.leave()
+        assertFalse(room.snapshot.showOwnerCount)
+        room.openJoin()
+        room.editCode("111222")
+        room.join()
+        room.setShowOwnerCount(true)
+        assertFalse(room.snapshot.showOwnerCount)
+    }
+
+    @Test
     fun hostCapacityIsClampedAndCannotBeChangedOutsideLobby() {
         val room = room()
         assertEquals(4, room.snapshot.capacity)

@@ -17,6 +17,7 @@ data class RoomSnapshot(
     val availableRooms: List<AvailableRoom>,
     val joinError: String?,
     val capacity: Int,
+    val showOwnerCount: Boolean,
 )
 
 /** Local room membership; a future network host supplies room codes and join events. */
@@ -35,6 +36,7 @@ class RoomLobby(
     private var isHost = false
     private var roundCount = 3.coerceAtMost(maxRounds)
     private var capacity = 4
+    private var showOwnerCount = false
 
     init {
         require(maxRounds >= 1) { "At least one round must be available" }
@@ -64,6 +66,7 @@ class RoomLobby(
             availableRooms = availableRooms,
             joinError = joinError,
             capacity = capacity,
+            showOwnerCount = showOwnerCount,
         )
 
     fun create() {
@@ -74,6 +77,7 @@ class RoomLobby(
         joinError = null
         isHost = true
         capacity = 4
+        showOwnerCount = false
         roundCount = 3.coerceAtMost(maxRounds)
         route = RoomRoute.LOBBY
         joinedCount = 1
@@ -86,6 +90,7 @@ class RoomLobby(
         route = RoomRoute.JOIN
         isHost = false
         capacity = 4
+        showOwnerCount = false
         roundCount = 3.coerceAtMost(maxRounds)
         code = ""
         joinError = null
@@ -106,6 +111,7 @@ class RoomLobby(
         }
         isHost = false
         capacity = 4
+        showOwnerCount = false
         roundCount = room.roundCount
         joinError = null
         route = RoomRoute.LOBBY
@@ -118,6 +124,7 @@ class RoomLobby(
         joinError = null
         isHost = false
         capacity = 4
+        showOwnerCount = false
         roundCount = 3.coerceAtMost(maxRounds)
         code = ""
         joinedCount = 0
@@ -133,6 +140,11 @@ class RoomLobby(
     fun setCapacity(value: Int) {
         if (route != RoomRoute.LOBBY || !isHost) return
         capacity = value.coerceIn(3, 8)
+    }
+
+    fun setShowOwnerCount(value: Boolean) {
+        if (route != RoomRoute.LOBBY || !isHost) return
+        showOwnerCount = value
     }
 
     fun start() {

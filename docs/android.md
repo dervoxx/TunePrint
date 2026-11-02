@@ -28,26 +28,41 @@ symulowanymi przeciwnikami; backend i Spotify nie są jeszcze podłączone.
 
 ## Nagrania i przebieg gry
 
-Przed budowaniem umieść w lokalnym, ignorowanym przez Git katalogu `songs/`:
+Umieść lokalne pliki audio w ignorowanym przez Git katalogu `songs/`.
+Dziesięć wymaganych nazw plików, metadane, przypisania do graczy i początek
+fragmentów definiuje `RoundTracks.kt`. Gradle dołącza nagrania do APK;
+nie są częścią repozytorium. Używaj plików, które możesz wykorzystać
+w danym zastosowaniu.
 
-- `14 - TACO HEMINGWAY - FRASCATI.mp3` — Kacper,
-- `06 Fiji.mp3` — Kamil,
-- `6. Madagaskar.mp3` — Ziobro.
+Przed utworzeniem lub dołączeniem do pokoju wpisz nick. Domyślnie grasz jako
+Olek; pozostali gracze to Kacper, Kamil i Ziobro.
+Możesz utworzyć pokój albo wybrać dostępny pokój lub wpisać jego sześciocyfrowy kod. Po utworzeniu
+pozostali gracze pojawiają się w ciągu trzech sekund; po dołączeniu są już obecni.
+Gospodarz ustawia limit 3–8 osób i liczbę rund do liczby dostępnych nagrań
+(maksymalnie 10). Start wymaga co najmniej trzech obecnych osób, nie pełnego pokoju.
+Nagrania w jednej grze nie powtarzają się. Gospodarz może też włączyć
+pokazywanie liczby playlist zawierających utwór; domyślnie jest ukryta.
 
-Gradle dołącza zawartość tego katalogu jako assets APK. Nagrania nie są częścią
-repozytorium. Katalog utworów i początek fragmentów definiuje `RoundTracks.kt`.
-Nie zmieniaj nazw plików bez aktualizacji katalogu. Używaj nagrań, które możesz
-wykorzystać w danym zastosowaniu.
+Po odliczaniu 3–2–1 masz 15 sekund. Zaznacz jednego lub kilku graczy i zatwierdź.
+Przy upływie czasu niepusty wybór zostaje zatwierdzony automatycznie.
+Punkty uwzględniają trafienia, błędne zaznaczenia i czas:
 
-Skład jest stały: Olek, Kacper, Kamil i Ziobro. Sterujesz Olkiem.
-Rozpocznij grę. Po odliczaniu 3–2–1 masz 15 sekund na jeden wybór
-właściciela utworu. Trafienie daje od 100 do 25 punktów, liniowo zależnie od czasu;
-błąd lub brak odpowiedzi daje 0. Runda kończy się po odpowiedzi wszystkich lub
-upływie czasu. Dopiero wtedy widać właściciela utworu i odpowiedzi graczy.
+- trafność = udział trafionych właścicieli minus udział wskazanych niewłaścicieli,
+  z minimum 0;
+- punkty = trafność × (60 + 40 × udział pozostałego czasu), po zaokrągleniu;
+- pełne trafienie daje 60–100 pkt, połowa poprawności 30–50 pkt;
+- zaznaczenie wszystkich przy obecności niewłaścicieli daje 0.
 
-Wyniki pozostają przez maksymalnie 30 sekund. Przycisk gotowości skraca przerwę,
-gdy wszyscy gracze będą gotowi. Po trzech rundach pojawia się końcowy ranking.
-Audio i zegar zatrzymują się po schowaniu aplikacji; obrót ekranu zachowuje grę.
+Runda kończy się po odpowiedzi wszystkich albo upływie czasu. Dopiero wtedy
+widać wszystkie poprawne osoby i odpowiedzi graczy. Nagranie „Halo halo z aresztu”
+ma zawsze Ziobro i występuje dokładnie raz w każdej grze, na losowej pozycji.
+Ziobro pozostaje w składzie również przy limicie trzech osób. Pozostałe
+przypisania mogą obejmować kilka osób.
+
+Między rundami wyniki pozostają przez maksymalnie 30 sekund; gotowość wszystkich
+skraca przerwę. Po ostatniej rundzie od razu pojawiają się końcowe wyniki
+i animowany ranking, bez gotowości ani odliczania. Audio i zegar zatrzymują się
+po schowaniu aplikacji; obrót ekranu zachowuje grę.
 
 Testy logiki:
 

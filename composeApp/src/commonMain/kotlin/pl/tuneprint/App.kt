@@ -32,22 +32,44 @@ import androidx.compose.ui.unit.dp
 import pl.tuneprint.game.GamePhase
 import pl.tuneprint.game.GameSession
 import pl.tuneprint.game.GameSnapshot
+import pl.tuneprint.game.RoomRoute
+import pl.tuneprint.game.RoomSnapshot
 import pl.tuneprint.ui.*
 
 private data class ScreenFrame(
     val snapshot: GameSnapshot,
+    val room: RoomSnapshot,
+    val nickname: String,
     val audioLevels: List<Float>,
     val audioLoading: Boolean,
     val error: String?,
 ) {
-    val key: String get() = if (error != null) "error" else "${snapshot.phase}:${snapshot.roundNumber}"
+    val key: String get() = when {
+        error != null -> "error"
+        room.route != RoomRoute.GAME -> room.route.name
+        else -> "${snapshot.phase}:${snapshot.roundNumber}"
+    }
 }
 
 @Composable
 fun App(
     snapshot: GameSnapshot,
+    room: RoomSnapshot,
+    nickname: String,
+    onNicknameChange: (String) -> Unit,
+    onCreateRoom: () -> Unit,
+    onOpenJoin: () -> Unit,
+    onCodeChange: (String) -> Unit,
+    onJoinRoom: () -> Unit,
+    onSelectRoom: (String) -> Unit,
+    onLeaveRoom: () -> Unit,
+    onRoundCountChange: (Int) -> Unit,
+    onCapacityChange: (Int) -> Unit,
+    onShowOwnerCountChange: (Boolean) -> Unit,
+    availableRoundCount: Int,
     onStart: () -> Unit,
-    onAnswer: (String) -> Unit,
+    onToggleOwner: (String) -> Unit,
+    onSubmitAnswer: () -> Unit,
     onReady: () -> Unit,
     onReplay: () -> Unit,
     audioLoading: Boolean,
@@ -61,7 +83,7 @@ fun App(
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             AnimatedVisibility(visible, enter = fadeIn(tween(220)), modifier = Modifier.fillMaxSize()) {
                 AnimatedContent(
-                    targetState = ScreenFrame(snapshot, audioLevels, audioLoading, error),
+                    targetState = ScreenFrame(snapshot, room, nickname, audioLevels, audioLoading, error),
                     contentKey = { it.key },
                     transitionSpec = { fadeIn(tween(180, 90)) togetherWith fadeOut(tween(130)) },
                     modifier = Modifier.fillMaxSize(),
@@ -80,11 +102,15 @@ fun App(
                             roundPoints = answer?.points ?: 0,
                             outcome = when {
                                 answer == null -> UiOutcome.NONE
-                                answer.selectedOwnerId == null -> UiOutcome.TIMEOUT
+                                answer.selectedOwnerIds == null -> UiOutcome.TIMEOUT
                                 answer.correct -> UiOutcome.CORRECT
+                                answer.accuracy > 0 -> UiOutcome.PARTIAL
                                 else -> UiOutcome.WRONG
                             },
-                            answerName = answer?.selectedOwnerId?.let { id -> state.players.first { it.id == id }.name },
+                            answerName = answer?.selectedOwnerIds?.let { ids -> state.players.filter { it.id in ids }.joinToString(", ") { it.name } },
+                            hitCount = answer?.selectedOwnerIds?.count { id -> state.result?.owners?.any { it.id == id } == true } ?: 0,
+                            totalOwners = state.result?.owners?.size ?: 0,
+                            wrongSelections = answer?.selectedOwnerIds?.count { id -> state.result?.owners?.none { it.id == id } == true } ?: 0,
                         )
                     }
                     CompositionLocalProvider(LocalScreenTransition provides this) {
@@ -101,23 +127,43 @@ fun App(
                                     TextButton(onClick = onReplay) { Text("Wróć") }
                                 }
                             }
-                            state.phase == GamePhase.LOBBY -> LobbyScreen(players, onStart)
+                            frame.room.route == RoomRoute.HOME -> HomeScreen(frame.nickname, onNicknameChange, onCreateRoom, onOpenJoin)
+                            frame.room.route == RoomRoute.JOIN -> JoinRoomScreen(
+                                frame.room.code, onCodeChange, onJoinRoom, onLeaveRoom,
+                                rooms = frame.room.availableRooms.map { UiRoom(it.code, it.hostName, it.roundCount) },
+                                onSelectRoom = onSelectRoom, error = frame.room.joinError,
+                            )
+                            frame.room.route == RoomRoute.LOBBY -> LobbyScreen(
+                                frame.room.players.map { member -> players.first { it.id == member.id } },
+                                onStart, frame.room.code, onLeaveRoom,
+                                isHost = frame.room.isHost,
+                                roundCount = frame.room.roundCount,
+                                maxRounds = if (frame.room.route == room.route) availableRoundCount else frame.room.maxRounds,
+                                onRoundCountChange = onRoundCountChange,
+                                capacity = frame.room.capacity,
+                                onCapacityChange = onCapacityChange,
+                                showOwnerCount = frame.room.showOwnerCount,
+                                onShowOwnerCountChange = onShowOwnerCountChange,
+                            )
                             state.phase == GamePhase.COUNTDOWN -> CountdownScreen(state.roundNumber, state.totalRounds, state.countdown)
                             state.phase == GamePhase.ROUND -> RoundScreen(
                                 state.roundNumber, state.totalRounds, state.remainingMs,
                                 GameSession.pointsFor(GameSession.ROUND_MS - state.remainingMs),
-                                players, state.selectedOwnerId, onAnswer,
+                                players, state.selectedOwnerIds,
+                                GameSession.LOCAL_PLAYER_ID in state.answeredPlayerIds,
+                                onToggleOwner, onSubmitAnswer,
                                 audioLevels = frame.audioLevels,
                                 acceptingAnswers = !frame.audioLoading,
+                                ownerCountHint = state.ownerCountHint,
                             )
-                            state.phase == GamePhase.RESULTS -> state.result?.let { result ->
+                            (state.phase == GamePhase.RESULTS || state.phase == GamePhase.FINISHED) -> state.result?.let { result ->
                                 ResultsScreen(
-                                    state.roundNumber, state.totalRounds, result.title, result.artist, result.owner.name,
+                                    state.roundNumber, state.totalRounds, result.title, result.artist, result.owners.map { it.name },
                                     players, ((state.remainingMs + 999) / 1000).toInt(),
                                     GameSession.LOCAL_PLAYER_ID in state.readyPlayerIds, onReady,
+                                    onReplay = onReplay, isFinal = state.phase == GamePhase.FINISHED,
                                 )
                             }
-                            state.phase == GamePhase.FINISHED -> FinalScreen(players, onReplay)
                         }
                     }
                 }

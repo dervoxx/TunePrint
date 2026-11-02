@@ -13,10 +13,19 @@ import pl.tuneprint.audio.RoundTracks
 import pl.tuneprint.game.GamePhase
 import pl.tuneprint.game.GameSession
 import pl.tuneprint.game.GameTrack
+import pl.tuneprint.game.RoomLobby
+import pl.tuneprint.game.RoomRoute
+import pl.tuneprint.game.Player
+import pl.tuneprint.game.selectRoundTracks
 
 /** Retains a local game and its audio across configuration changes. */
 class GameController(application: Application) : AndroidViewModel(application) {
+    var nickname by mutableStateOf("Olek")
+        private set
     private var session = newSession()
+    private var room = newRoom()
+    var roomSnapshot by mutableStateOf(room.snapshot)
+        private set
     var snapshot by mutableStateOf(session.snapshot)
         private set
     var audioLoading by mutableStateOf(false)
@@ -39,20 +48,118 @@ class GameController(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun start() {
-        if (snapshot.phase != GamePhase.LOBBY) return
+    fun updateNickname(value: String) {
+        if (roomSnapshot.route == RoomRoute.HOME) nickname = value.take(20)
+    }
+
+    private fun newRoom() = RoomLobby(
+        players = session.players.sortedBy {
+            when (it.id) {
+                "you" -> 0
+                "kacper" -> 1
+                "ziobro" -> 2
+                else -> 3
+            }
+        },
+        maxRounds = RoundTracks.all.size,
+    )
+
+    private fun resetEntry() {
         session = newSession()
+        snapshot = session.snapshot
+        room = newRoom()
+        roomSnapshot = room.snapshot
+        lastTick = SystemClock.elapsedRealtime()
+    }
+
+    fun createRoom() {
+        if (nickname.isBlank() || roomSnapshot.route != RoomRoute.HOME) return
+        resetEntry()
+        advanceToNow()
+        room.create()
+        roomSnapshot = room.snapshot
+    }
+
+    fun openJoin() {
+        if (nickname.isBlank() || roomSnapshot.route != RoomRoute.HOME) return
+        resetEntry()
+        room.openJoin()
+        roomSnapshot = room.snapshot
+    }
+
+    fun updateRoomCode(value: String) {
+        room.editCode(value)
+        roomSnapshot = room.snapshot
+    }
+
+    fun selectRoom(code: String) {
+        room.editCode(code)
+        joinRoom()
+    }
+
+    fun joinRoom() {
+        room.join()
+        roomSnapshot = room.snapshot
+        lastTick = SystemClock.elapsedRealtime()
+    }
+
+    fun leaveRoom() {
+        audio.stop()
+        audioLevels = emptyList()
+        audioLoading = false
+        error = null
+        session = newSession()
+        snapshot = session.snapshot
+        room.leave()
+        roomSnapshot = room.snapshot
+        lastTick = SystemClock.elapsedRealtime()
+    }
+
+    val availableRoundCount: Int
+        get() = playableTracks(roomSnapshot.players).size.coerceAtLeast(1)
+
+    fun updateCapacity(value: Int) {
+        room.setCapacity(value)
+        roomSnapshot = room.snapshot
+        room.setRoundCount(roomSnapshot.roundCount.coerceAtMost(availableRoundCount))
+        roomSnapshot = room.snapshot
+    }
+
+    fun updateShowOwnerCount(value: Boolean) {
+        room.setShowOwnerCount(value)
+        roomSnapshot = room.snapshot
+    }
+
+    fun updateRoundCount(value: Int) {
+        room.setRoundCount(value.coerceIn(1, availableRoundCount))
+        roomSnapshot = room.snapshot
+    }
+
+    fun start() {
+        if (!roomSnapshot.canStart || snapshot.phase != GamePhase.LOBBY) return
+        val participants = roomSnapshot.players
+        if (roomSnapshot.roundCount > playableTracks(participants).size) return
+        room.start()
+        roomSnapshot = room.snapshot
+        session = newSession(roomSnapshot.roundCount, participants, roomSnapshot.showOwnerCount)
         session.start()
         error = null
         lastTick = SystemClock.elapsedRealtime()
         publish()
     }
 
-    fun answer(ownerId: String) {
+    fun toggleOwner(ownerId: String) {
         if (!foreground || audioLoading || error != null) return
         advanceToNow()
         if (audioLoading || error != null) return
-        session.answer(ownerId)
+        session.toggleOwner(ownerId)
+        publish()
+    }
+
+    fun submitAnswer() {
+        if (!foreground || audioLoading || error != null) return
+        advanceToNow()
+        session.submitAnswer()
         publish()
     }
 
@@ -70,6 +177,8 @@ class GameController(application: Application) : AndroidViewModel(application) {
         error = null
         session = newSession()
         snapshot = session.snapshot
+        room.replay()
+        roomSnapshot = room.snapshot
         lastTick = SystemClock.elapsedRealtime()
     }
 
@@ -95,17 +204,31 @@ class GameController(application: Application) : AndroidViewModel(application) {
         audioLevels = emptyList()
     }
 
-    private fun newSession() = GameSession(
-        tracks = RoundTracks.all.shuffled().map {
-            GameTrack(it.assetName, it.title, it.artist, it.ownerId)
-        },
+    private fun playableTracks(participants: List<Player>? = null): List<GameTrack> {
+        val ids = participants?.map { it.id }?.toSet()
+        return RoundTracks.all.mapNotNull { track ->
+            val owners = if (ids == null) track.ownerIds else track.ownerIds.intersect(ids)
+            if (owners.isEmpty()) null else GameTrack(track.assetName, track.title, track.artist, owners)
+        }
+    }
+
+    private fun newSession(roundCount: Int = 3, participants: List<Player>? = null, showOwnerCount: Boolean = false) = GameSession(
+        tracks = selectRoundTracks(
+            playableTracks(participants), roundCount, "Halo halo z aresztu funny.webm",
+        ),
+        localName = nickname,
+        participants = participants,
+        showOwnerCount = showOwnerCount,
     )
 
     private fun advanceToNow() {
         val now = SystemClock.elapsedRealtime()
         val delta = now - lastTick
         lastTick = now
-        if (!foreground || audioLoading || error != null) return
+        if (!foreground) return
+        room.advance(delta.coerceAtLeast(0))
+        roomSnapshot = room.snapshot
+        if (audioLoading || error != null || roomSnapshot.route != RoomRoute.GAME) return
         session.advance(delta.coerceAtLeast(0))
         publish()
         audioLevels = if (snapshot.phase == GamePhase.ROUND && !audioLoading) audio.levels() else emptyList()

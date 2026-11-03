@@ -214,6 +214,7 @@ fun HomeScreen(
         OutlinedTextField(
             value = nickname, onValueChange = { onNicknameChange(it.take(20)) },
             label = { Text("Twój nick") }, singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(focusedLabelColor = Ink.Highlight, focusedBorderColor = Ink.Highlight, cursorColor = Ink.Highlight),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); keyboard?.hide() }),
             modifier = Modifier.fillMaxWidth().panelMotion(1), shape = RoundedCornerShape(16.dp),
@@ -221,6 +222,7 @@ fun HomeScreen(
         PrimaryAction("Utwórz pokój", { open(onCreate) }, validNickname)
         OutlinedButton(
             onClick = { open(onJoin) }, enabled = validNickname,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink.Text),
             modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).panelMotion(4),
             shape = RoundedCornerShape(16.dp),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
@@ -274,6 +276,7 @@ fun JoinRoomScreen(
             value = code,
             onValueChange = { onCodeChange(it.filter { character -> character in '0'..'9' }.take(6)) },
             label = { Text("Kod pokoju") },
+            colors = OutlinedTextFieldDefaults.colors(focusedLabelColor = Ink.Highlight, focusedBorderColor = Ink.Highlight, cursorColor = Ink.Highlight),
             singleLine = true,
             isError = error != null,
             textStyle = MaterialTheme.typography.titleLarge.copy(textAlign = TextAlign.Center, letterSpacing = 4.sp),
@@ -317,14 +320,16 @@ fun LobbyScreen(
             Row(Modifier.fillMaxWidth().panelMotion(1), horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { onRoundCountChange((roundCount - 1).coerceIn(1, roundLimit)) },
-                    enabled = roundCount > 1, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
+                    enabled = roundCount > 1, modifier = Modifier.size(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink.Text), contentPadding = PaddingValues(0.dp)) {
                     Text("−", fontSize = 24.sp)
                 }
                 StableResultText("$roundCount ${roundNoun(roundCount)}", (1..roundLimit).map { "$it ${roundNoun(it)}" },
                     Ink.Text, MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.Center, fontFeatureSettings = "tnum"),
                     Modifier.weight(1f))
                 OutlinedButton(onClick = { onRoundCountChange((roundCount + 1).coerceIn(1, roundLimit)) },
-                    enabled = roundCount < roundLimit, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
+                    enabled = roundCount < roundLimit, modifier = Modifier.size(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink.Text), contentPadding = PaddingValues(0.dp)) {
                     Text("+", fontSize = 24.sp)
                 }
             }
@@ -338,7 +343,8 @@ fun LobbyScreen(
             Row(Modifier.fillMaxWidth().panelMotion(2), horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { onCapacityChange((capacity - 1).coerceIn(3, 8)) },
-                    enabled = capacity > 3, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
+                    enabled = capacity > 3, modifier = Modifier.size(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink.Text), contentPadding = PaddingValues(0.dp)) {
                     Text("−", fontSize = 24.sp)
                 }
                 StableResultText("Limit: $capacity ${if (capacity in 3..4) "osoby" else "osób"}",
@@ -346,7 +352,8 @@ fun LobbyScreen(
                     Ink.Text, MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.Center, fontFeatureSettings = "tnum"),
                     Modifier.weight(1f))
                 OutlinedButton(onClick = { onCapacityChange((capacity + 1).coerceIn(3, 8)) },
-                    enabled = capacity < 8, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
+                    enabled = capacity < 8, modifier = Modifier.size(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink.Text), contentPadding = PaddingValues(0.dp)) {
                     Text("+", fontSize = 24.sp)
                 }
             }

@@ -29,8 +29,8 @@ symulowanymi przeciwnikami; backend i Spotify nie są jeszcze podłączone.
 ## Nagrania i przebieg gry
 
 Umieść lokalne pliki audio w ignorowanym przez Git katalogu `songs/`.
-Dziesięć wymaganych nazw plików, metadane, przypisania do graczy i początek
-fragmentów definiuje `RoundTracks.kt`. Gradle dołącza nagrania do APK;
+Nazwy plików, przypisania w grze offline i początek fragmentów definiuje
+`RoundTracks.kt`. Metadane opisuje [katalog demonstracyjny](catalog.md). Gradle dołącza nagrania do APK;
 nie są częścią repozytorium. Używaj plików, które możesz wykorzystać
 w danym zastosowaniu.
 

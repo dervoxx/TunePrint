@@ -1,5 +1,6 @@
 # TunePrint
 
-Etap I - plan
+Muzyczna gra na Androida. Można grać lokalnie z symulowanymi przeciwnikami
+albo dołączyć do wspólnego pokoju na serwerze.
 
-[Opis aplikacji](docs/intro.md) · [Struktura](docs/structure.md)
+[Uruchomienie Androida](docs/android.md) · [Uruchomienie serwera](docs/server.md) · [Katalog nagrań](docs/catalog.md) · [Struktura](docs/structure.md)

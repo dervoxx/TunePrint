@@ -23,10 +23,27 @@ APK powstaje w `composeApp/build/outputs/apk/debug/composeApp-debug.apk`.
 
 Wspólny ekran Compose znajduje się w `composeApp/src/commonMain/`,
 a aktywność i manifest Androida w `composeApp/src/androidMain/`.
-Skonfigurowany jest tylko Android. Obecna gra działa lokalnie z trzema
-symulowanymi przeciwnikami; backend i Spotify nie są jeszcze podłączone.
+Ekran startowy otwiera demo offline z trzema symulowanymi przeciwnikami.
 
-## Nagrania i przebieg gry
+## Gra online
+
+1. Uruchom serwer poleceniem `./gradlew :server:run` (Windows: `gradlew.bat :server:run`).
+2. W Androidzie wybierz **Graj online**. Emulator korzysta z `ws://10.0.2.2:8080/game`.
+   Na telefonie wpisz adres komputera w tej samej sieci, np. `ws://192.168.1.10:8080/game`.
+   Zezwól na połączenia do portu TCP 8080 w sieci lokalnej.
+3. Wpisz nick, rozwiń **Moja playlista** i wybierz co najmniej jeden utwór.
+   Utwórz pokój lub dołącz przez listę albo kod. Gospodarz wybiera tryb
+   (właściciele, tytuł lub wykonawca) i rozpoczyna grę przy co najmniej trzech osobach.
+
+Każde urządzenie odtwarza nagrania z własnego APK, dlatego zbuduj je z tym samym
+kompletem plików `songs/`. Podczas rundy serwer otrzymuje wybór lub wpisany tekst.
+Po upływie czasu ocenia ostatnią niepustą odpowiedź roboczą, o ile nadal jest zaznaczona
+lub wpisana. Wyniki trafiają do graczy po zakończeniu rundy.
+Gra trwa po schowaniu aplikacji. Po powrocie audio wraca na bieżącą pozycję.
+Po zerwaniu połączenia klient automatycznie próbuje wznowić sesję.
+Systemowy przycisk Wstecz pozwala opuścić pokój.
+
+## Nagrania i przebieg gry offline
 
 Umieść lokalne pliki audio w ignorowanym przez Git katalogu `songs/`.
 Dziesięć wymaganych nazw plików, metadane, przypisania do graczy i początek

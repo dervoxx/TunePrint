@@ -30,6 +30,7 @@ class RoundAudioPlayer(context: Context) {
         startAtMs: Int = 30_000,
         onStarted: () -> Unit,
         onError: (String) -> Unit,
+        elapsedInRoundMs: () -> Long = { 0L },
     ) {
         stop()
         this.onStarted = onStarted
@@ -55,9 +56,10 @@ class RoundAudioPlayer(context: Context) {
                 }
                 prepared.isLooping = prepared.duration < 15_000
                 // Keep a full round available even when a supplied clip is shorter than a song.
-                val offset = startAtMs.coerceIn(0, (prepared.duration - 15_000).coerceAtLeast(0))
-                segmentStartMs = offset
-                analyze(assetName, offset)
+                val base = startAtMs.coerceIn(0, (prepared.duration - 15_000).coerceAtLeast(0))
+                val offset = ((base + elapsedInRoundMs().coerceIn(0, 14_999)) % prepared.duration).toInt()
+                segmentStartMs = base
+                analyze(assetName, base)
                 if (offset == 0) {
                     ready = true
                     startIfReady()

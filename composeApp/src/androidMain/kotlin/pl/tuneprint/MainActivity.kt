@@ -11,6 +11,7 @@ import pl.tuneprint.game.RoomRoute
 
 class MainActivity : ComponentActivity() {
     private lateinit var game: GameController
+    private lateinit var online: OnlineGame
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,7 +20,15 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         game = ViewModelProvider(this)[GameController::class.java]
+        online = ViewModelProvider(this)[OnlineGame::class.java]
         setContent {
+            if (online.active) {
+                OnlineScreens(online) {
+                    online.exit()
+                    game.resume()
+                }
+                return@setContent
+            }
             BackHandler(game.roomSnapshot.route == RoomRoute.JOIN || game.roomSnapshot.route == RoomRoute.LOBBY) {
                 game.leaveRoom()
             }
@@ -47,17 +56,23 @@ class MainActivity : ComponentActivity() {
                 audioLevels = game.audioLevels,
                 error = game.error,
                 onRetry = game::retryAudio,
+                onOpenOnline = {
+                    game.pause()
+                    online.enter(game.nickname)
+                },
             )
         }
     }
 
     override fun onResume() {
         super.onResume()
-        game.resume()
+        if (!online.active) game.resume()
+        online.resume()
     }
 
     override fun onPause() {
         game.pause()
+        online.pause()
         super.onPause()
     }
 }

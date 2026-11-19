@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "TunePrint"
 include(":composeApp")
 include(":shared")
+include(":server")

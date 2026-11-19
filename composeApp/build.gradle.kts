@@ -22,6 +22,7 @@ kotlin {
             implementation(kotlin("test"))
         }
         androidMain.dependencies {
+            implementation(project(":shared"))
             implementation("androidx.activity:activity-compose:1.11.0")
         }
     }

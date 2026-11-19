@@ -108,7 +108,9 @@ internal class GameServer(
         peer.roomCode = null
         val seat = room.seats.values.find { it.peer === peer } ?: return
         seat.peer = null
-        seat.disconnectedAt = clock()
+        val now = clock()
+        seat.disconnectedAt = now
+        broadcast(room, now)
     }
 
     @Synchronized

@@ -96,7 +96,7 @@ private fun OnlineRoom(room: RoomState, game: OnlineGame, onLeave: () -> Unit) {
             capacity = room.capacity, onCapacityChange = { game.command(ClientCommand("configure", capacity = it)) },
             showOwnerCount = room.showOwnerCount,
             onShowOwnerCountChange = { game.command(ClientCommand("configure", showOwnerCount = it)) },
-            canStart = game.sessionConnected && host && players.size >= 3,
+            canStart = game.sessionConnected && host && room.canStart,
             modeControl = {
                 Text("Tryb gry · ${modes[room.mode]}")
                 if (host) modes.forEach { (mode, label) ->

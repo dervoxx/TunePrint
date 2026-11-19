@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -53,7 +54,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         private set
     var audioError by mutableStateOf<String?>(null)
         private set
-    var remaining by mutableStateOf(0L)
+    var remaining by mutableLongStateOf(0L)
         private set
     var levels by mutableStateOf(emptyList<Float>())
         private set

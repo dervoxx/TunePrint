@@ -51,6 +51,7 @@ data class RoomState(
     val readyIds: List<String>,
     val ranking: List<NetRank>,
     val result: NetResult?,
+    val canStart: Boolean = false,
 )
 
 @Serializable

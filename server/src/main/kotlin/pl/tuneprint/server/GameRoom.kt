@@ -29,6 +29,7 @@ internal class GameRoom(val code: String, first: Seat) {
         .filter { RoundScoring.isEligible(selectedMode, it, seats.keys) }
     private val maxRounds get() = pool(mode).size
     val canJoin get() = phase == Phase.LOBBY && seats.size < capacity
+    private val canStart get() = phase == Phase.LOBBY && seats.values.count { it.peer != null } >= 3
     val empty get() = seats.values.none { it.token != null }
     val timed get() = phase == Phase.COUNTDOWN || phase == Phase.ROUND || phase == Phase.RESULTS
 
@@ -63,7 +64,7 @@ internal class GameRoom(val code: String, first: Seat) {
                 when (cmd.type) {
                     "configure" -> configure(cmd)
                     "start" -> {
-                        require(phase == Phase.LOBBY && seats.values.count { it.peer != null } >= 3) {
+                        require(canStart) {
                             "Do startu potrzeba co najmniej trzech połączonych graczy w lobby."
                         }
                         tracks = pool(mode).shuffled().take(roundCount)
@@ -200,6 +201,6 @@ internal class GameRoom(val code: String, first: Seat) {
         answeredIds = answers.keys.toList(), readyIds = ready.toList(),
         ranking = seats.keys.map { totals[it] ?: NetRank(it, 0, 0) }
             .sortedWith(compareByDescending<NetRank> { it.points }.thenByDescending { it.correctAnswers }),
-        result = result,
+        result = result, canStart = canStart,
     )
 }

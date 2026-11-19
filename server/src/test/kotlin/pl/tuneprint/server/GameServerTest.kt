@@ -60,6 +60,20 @@ class GameServerTest {
     }
 
     @Test
+    fun startAvailabilityFollowsConnectedPlayers() {
+        val host = create()
+        join(host)
+        val guest = join(host)
+        assertTrue(host.state.canStart)
+        games.disconnect(guest.peer)
+        assertFalse(host.state.canStart)
+        host.send(ClientCommand("start"))
+        assertEquals("error", host.last.type)
+        Client().send(ClientCommand("resume", token = guest.token))
+        assertTrue(host.state.canStart)
+    }
+
+    @Test
     fun deadlineUsesLastDraftAndRejectsLateAnswerBeforeNextTick() {
         val host = create()
         val other = join(host)

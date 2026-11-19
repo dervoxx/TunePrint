@@ -76,6 +76,7 @@ data class UiPlayer(
     val hitCount: Int = 0,
     val totalOwners: Int = 0,
     val wrongSelections: Int = 0,
+    val textAnswerMode: Boolean = false,
 )
 
 enum class UiOutcome { NONE, CORRECT, PARTIAL, WRONG, TIMEOUT }
@@ -198,10 +199,14 @@ fun HomeScreen(
     onNicknameChange: (String) -> Unit,
     onCreate: () -> Unit,
     onJoin: () -> Unit,
+    heading: String = "TunePrint",
+    canEnter: Boolean = true,
+    settings: @Composable () -> Unit = {},
+    extraActions: @Composable () -> Unit = {},
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
-    val validNickname = nickname.isNotBlank()
+    val validNickname = nickname.isNotBlank() && canEnter
     val open: (() -> Unit) -> Unit = { action ->
         if (validNickname) {
             focus.clearFocus()
@@ -210,7 +215,7 @@ fun HomeScreen(
         }
     }
     Screen {
-        Title("TunePrint")
+        Title(heading)
         OutlinedTextField(
             value = nickname, onValueChange = { onNicknameChange(it.take(20)) },
             label = { Text("Twój nick") }, singleLine = true,
@@ -219,6 +224,7 @@ fun HomeScreen(
             keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); keyboard?.hide() }),
             modifier = Modifier.fillMaxWidth().panelMotion(1), shape = RoundedCornerShape(16.dp),
         )
+        settings()
         PrimaryAction("Utwórz pokój", { open(onCreate) }, validNickname)
         OutlinedButton(
             onClick = { open(onJoin) }, enabled = validNickname,
@@ -227,6 +233,7 @@ fun HomeScreen(
             shape = RoundedCornerShape(16.dp),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
         ) { Text("Dołącz do pokoju", textAlign = TextAlign.Center) }
+        extraActions()
     }
 }
 
@@ -239,8 +246,10 @@ fun JoinRoomScreen(
     rooms: List<UiRoom>,
     onSelectRoom: (String) -> Unit,
     error: String?,
+    onRefresh: (() -> Unit)? = null,
+    canJoin: Boolean = true,
 ) {
-    val validCode = code.length == 6 && code.all { it in '0'..'9' }
+    val validCode = canJoin && code.length == 6 && code.all { it in '0'..'9' }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     val join = {
@@ -257,6 +266,7 @@ fun JoinRoomScreen(
         }
     }) {
         Title("Dołącz do pokoju")
+        if (onRefresh != null) OutlinedButton(onClick = onRefresh, enabled = canJoin) { Text("Odśwież listę") }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             rooms.forEachIndexed { index, room ->
                 OutlinedButton(onClick = {
@@ -304,9 +314,11 @@ fun LobbyScreen(
     onCapacityChange: (Int) -> Unit,
     showOwnerCount: Boolean,
     onShowOwnerCountChange: (Boolean) -> Unit,
+    canStart: Boolean = players.size >= 3,
+    modeControl: @Composable () -> Unit = {},
 ) {
     Screen(footer = {
-        PrimaryAction("Zaczynamy", onStart, players.size >= 3)
+        PrimaryAction("Zaczynamy", onStart, canStart)
         TextButton(onClick = onLeave, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).panelMotion(4)) {
             Text("Wyjdź", color = Ink.Muted)
         }
@@ -316,6 +328,7 @@ fun LobbyScreen(
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.fillMaxWidth().panelMotion(1))
         val roundLimit = maxRounds.coerceAtLeast(1)
+        modeControl()
         if (isHost) {
             Row(Modifier.fillMaxWidth().panelMotion(1), horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -427,15 +440,18 @@ fun RoundScreen(
     audioLevels: List<Float> = emptyList(),
     acceptingAnswers: Boolean = true,
     ownerCountHint: Int? = null,
+    question: String = "Czyj to utwór?",
+    textAnswer: String? = null,
+    onTextChange: (String) -> Unit = {},
 ) {
     val seconds = ceil(remainingMillis.coerceAtLeast(0) / 1000.0).toInt()
     Screen(compact = true, footer = {
         PrimaryAction(if (submitted) "Zatwierdzono" else "Zatwierdź", onSubmit,
-            selectedPlayerIds.isNotEmpty() && !submitted && acceptingAnswers,
+            (textAnswer?.isNotBlank() ?: selectedPlayerIds.isNotEmpty()) && !submitted && acceptingAnswers,
             reservedLabels = listOf("Zatwierdź", "Zatwierdzono"))
     }) {
         RoundNumber(round, totalRounds)
-        Title("Czyj to utwór?", 1)
+        Title(question, 1)
         if (ownerCountHint != null) {
             StableResultText("Na $ownerCountHint ${if (ownerCountHint == 1) "playliście" else "playlistach"}",
                 listOf("Na 1 playliście", "Na 8 playlistach"), Ink.Muted,
@@ -453,41 +469,11 @@ fun RoundScreen(
             modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).panelMotion(1),
             color = if (seconds <= 5) Ink.Red else Ink.Highlight, trackColor = Ink.Raised)
         AudioWaveform(audioLevels, Modifier.fillMaxWidth().height(48.dp).panelMotion(2))
-        // Two equal tiles + 12dp gap fill the width; text can grow and wrap.
-        val textMeasurer = rememberTextMeasurer()
-        val density = LocalDensity.current
-        val nameStyle = MaterialTheme.typography.labelLarge.copy(fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val nameWidth = with(density) { (((maxWidth - 12.dp) / 2) - 24.dp).roundToPx().coerceAtLeast(1) }
-            val nameLines = players.maxOfOrNull { player ->
-                textMeasurer.measure(AnnotatedString(player.name), style = nameStyle,
-                    constraints = Constraints(maxWidth = nameWidth)).lineCount
-            } ?: 1
-            PlayerGrid(players) { player, index ->
-                val chosen = player.id in selectedPlayerIds
-                OutlinedButton(
-                    onClick = { onToggle(player.id) }, enabled = !submitted && acceptingAnswers,
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (chosen) Ink.Violet else Ink.Surface,
-                        contentColor = if (chosen) Color.White else Ink.Text,
-                        disabledContainerColor = if (chosen) Ink.Violet else Ink.Surface,
-                        disabledContentColor = if (chosen) Color.White else Ink.Muted,
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(if (chosen) 2.dp else 1.dp,
-                        if (chosen) Ink.Highlight else Ink.Muted.copy(alpha = .6f)),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 132.dp).panelMotion(index + 2).semantics { selected = chosen },
-                    contentPadding = PaddingValues(12.dp),
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Avatar(player.name)
-                        Text(player.name, style = nameStyle, minLines = nameLines, maxLines = nameLines, textAlign = TextAlign.Center)
-                        Text("Wybrano", style = MaterialTheme.typography.bodyMedium,
-                            modifier = if (chosen) Modifier else Modifier.alpha(0f).clearAndSetSemantics { })
-                    }
-                }
-            }
-        }
+        if (textAnswer != null) {
+            OutlinedTextField(value = textAnswer, onValueChange = onTextChange,
+                label = { Text("Twoja odpowiedź") }, singleLine = true,
+                enabled = !submitted && acceptingAnswers, modifier = Modifier.fillMaxWidth())
+        } else OwnerChoices(players, selectedPlayerIds, onToggle, !submitted && acceptingAnswers)
         Text("Odpowiedzi ${players.count { it.answered }}/${players.size}", color = Ink.Muted,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().panelMotion(4))
         Row(Modifier.fillMaxWidth().panelMotion(4), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -504,10 +490,50 @@ fun RoundScreen(
 }
 
 @Composable
+private fun OwnerChoices(players: List<UiPlayer>, selectedPlayerIds: Set<String>, onToggle: (String) -> Unit, enabled: Boolean) {
+    // Two equal tiles + 12dp gap fill the width; text can grow and wrap.
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val nameStyle = MaterialTheme.typography.labelLarge.copy(fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val nameWidth = with(density) { (((maxWidth - 12.dp) / 2) - 24.dp).roundToPx().coerceAtLeast(1) }
+        val nameLines = players.maxOfOrNull { player ->
+            textMeasurer.measure(AnnotatedString(player.name), style = nameStyle,
+                constraints = Constraints(maxWidth = nameWidth)).lineCount
+        } ?: 1
+        PlayerGrid(players) { player, index ->
+            val chosen = player.id in selectedPlayerIds
+            OutlinedButton(
+                onClick = { onToggle(player.id) }, enabled = enabled,
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (chosen) Ink.Violet else Ink.Surface,
+                    contentColor = if (chosen) Color.White else Ink.Text,
+                    disabledContainerColor = if (chosen) Ink.Violet else Ink.Surface,
+                    disabledContentColor = if (chosen) Color.White else Ink.Muted,
+                ),
+                border = androidx.compose.foundation.BorderStroke(if (chosen) 2.dp else 1.dp,
+                    if (chosen) Ink.Highlight else Ink.Muted.copy(alpha = .6f)),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 132.dp).panelMotion(index + 2).semantics { selected = chosen },
+                contentPadding = PaddingValues(12.dp),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Avatar(player.name)
+                    Text(player.name, style = nameStyle, minLines = nameLines, maxLines = nameLines, textAlign = TextAlign.Center)
+                    Text("Wybrano", style = MaterialTheme.typography.bodyMedium,
+                        modifier = if (chosen) Modifier else Modifier.alpha(0f).clearAndSetSemantics { })
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ResultsScreen(
     round: Int, totalRounds: Int, trackTitle: String, trackArtist: String, ownerNames: List<String>,
     players: List<UiPlayer>, remainingSeconds: Int, isReady: Boolean, onReady: () -> Unit,
     onReplay: () -> Unit, isFinal: Boolean = false,
+    canReplay: Boolean = true,
 ) {
     val previousScores = remember(round) { players.associate { it.id to (it.score - it.roundPoints) } }
     var revealScores by remember(round) { mutableStateOf(false) }
@@ -519,7 +545,7 @@ fun ResultsScreen(
     val ranking = players.sortedByDescending { if (revealScores) it.score else previousScores.getValue(it.id) }
     Screen(scrollable = false, footer = {
         if (isFinal) {
-            PrimaryAction("Zagraj ponownie", onReplay)
+            PrimaryAction(if (canReplay) "Zagraj ponownie" else "Czekamy na gospodarza", onReplay, canReplay)
         } else {
             Text("Gotowi ${players.count { it.ready }}/${players.size} · ${remainingSeconds.coerceAtLeast(0)} s",
                 color = Ink.Muted, textAlign = TextAlign.Center,
@@ -589,6 +615,7 @@ private fun ResultRow(player: UiPlayer, rank: Int, showAnswer: Boolean, roster: 
 }
 
 private fun hitSummary(player: UiPlayer): String {
+    if (player.textAnswerMode) return if (player.outcome == UiOutcome.CORRECT) "Poprawna odpowiedź" else "Błędna odpowiedź"
     val hits = "${player.hitCount}/${player.totalOwners} trafień"
     val errors = when (player.wrongSelections) {
         1 -> "błąd"

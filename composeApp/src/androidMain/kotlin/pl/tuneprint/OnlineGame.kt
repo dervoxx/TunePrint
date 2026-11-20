@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.core.content.edit
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -14,6 +15,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -26,15 +28,29 @@ import pl.tuneprint.net.RoomListing
 import pl.tuneprint.net.RoomState
 import pl.tuneprint.net.ServerEvent
 
+/** A bare LAN address uses the bundled server's port and route. Full WebSocket URLs stay explicit. */
+internal fun serverRequest(input: String): Request {
+    val address = input.trim()
+    val url = if (address.startsWith("ws://") || address.startsWith("wss://")) address else {
+        require(address.isNotEmpty() && address.none { it.isWhitespace() || it in "/?#@" })
+        val base = "http://$address".toHttpUrl()
+        val portSpecified = ':' in address.substringAfterLast(']')
+        base.newBuilder().port(if (portSpecified) base.port else 8080).addPathSegment("game").build().toString()
+    }
+    return Request.Builder().url(url).build()
+}
+
 /** Socket callbacks, room changes and playback are serialized on the main thread. */
 class OnlineGame(application: Application, private val saved: SavedStateHandle) : AndroidViewModel(application) {
-    var active by mutableStateOf(saved.get<Boolean>("online") ?: false)
+    private val profile = application.getSharedPreferences("player", Application.MODE_PRIVATE)
+    var active by mutableStateOf(saved.get<Boolean>("online") ?: true)
         private set
-    var endpoint by mutableStateOf(saved.get<String>("endpoint") ?: "ws://10.0.2.2:8080/game")
+    var endpoint by mutableStateOf(saved.get<String>("endpoint") ?: profile.getString("endpoint", null) ?: "ws://10.0.2.2:8080/game")
         private set
-    var name by mutableStateOf(saved.get<String>("name") ?: "")
+    var name by mutableStateOf(saved.get<String>("name") ?: profile.getString("name", null) ?: "")
         private set
-    var catalog by mutableStateOf(saved.get<ArrayList<String>>("catalog")?.toSet() ?: emptySet())
+    var catalog by mutableStateOf((saved.get<ArrayList<String>>("catalog")?.toSet()
+        ?: profile.getStringSet("catalog", emptySet()).orEmpty()).intersect(DemoAudio.byKey.keys))
         private set
     var code by mutableStateOf(saved.get<String>("code") ?: "")
         private set
@@ -144,13 +160,11 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private fun connect(initial: ClientCommand) {
         closeSocket()
-        val url = endpoint.trim()
         val request = try {
-            require(url.startsWith("ws://") || url.startsWith("wss://"))
-            Request.Builder().url(url).build()
+            serverRequest(endpoint)
         } catch (_: IllegalArgumentException) {
             busy = false
-            message = "Podaj pełny adres, np. ws://192.168.1.10:8080/game."
+            message = "Wpisz IP komputera, np. 192.168.1.10, lub pełny adres WebSocket."
             return
         }
         socket = client.newWebSocket(request, object : WebSocketListener() {
@@ -208,6 +222,14 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
                 event.token?.let {
                     token = it
                     saved["token"] = it
+                    val serverUrl = serverRequest(endpoint).url
+                    profile.edit {
+                        putString("name", name)
+                        putStringSet("catalog", catalog.toSet())
+                        if (serverUrl.username.isEmpty() && serverUrl.password.isEmpty() && serverUrl.query == null) {
+                            putString("endpoint", endpoint)
+                        } else remove("endpoint")
+                    }
                 }
                 event.playerId?.let {
                     playerId = it

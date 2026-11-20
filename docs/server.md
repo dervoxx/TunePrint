@@ -6,6 +6,10 @@ Serwer nasłuchuje pod `ws://localhost:8080/game`. Port można zmienić zmienną
 w tej samej sieci Wi-Fi używa adresu LAN komputera. Do udostępnienia usługi
 poza siecią lokalną potrzebny jest szyfrowany transport `wss://`.
 
+Paczkę do uruchomienia na innym komputerze tworzy `./gradlew :server:distZip`.
+Rozpakuj `server/build/distributions/server.zip` i uruchom `server/bin/server.bat`
+na Windows albo `server/bin/server` na Linuxie z Javą 17 lub nowszą.
+
 ## Przebieg połączenia
 
 - Jedna ramka tekstowa zawiera jedno polecenie JSON. Typy wiadomości definiuje

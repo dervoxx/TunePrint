@@ -28,14 +28,15 @@ lokalną grę z trzema symulowanymi przeciwnikami.
 
 ## Gra online
 
-1. Uruchom serwer poleceniem `./gradlew :server:run` (Windows: `gradlew.bat :server:run`).
-2. Emulator korzysta z `ws://10.0.2.2:8080/game`. Na telefonie rozwiń **Adres serwera**
-   i wpisz IP komputera w tej samej sieci Wi-Fi lub pełny adres z konsoli serwera.
-   Zezwól na połączenia do portu TCP 8080 w sieci lokalnej.
-3. Wpisz nick i naciśnij **Wybierz utwory do gry**. Po wejściu do pokoju aplikacja
+1. Przy pierwszym uruchomieniu aplikacja korzysta z `wss://tuneprint.mliczek.com/game`.
+   W starszej instalacji możesz wybrać **Adres serwera** i wpisać ten adres.
+2. Wpisz nick i naciśnij **Wybierz utwory do gry**. Po wejściu do pokoju aplikacja
    zapamięta nick, adres i playlistę na tym urządzeniu. Utwórz pokój lub dołącz
    przez listę albo kod. Gospodarz może udostępnić kod, wybrać tryb
    (właściciele, tytuł lub wykonawca) i rozpocząć grę przy co najmniej trzech osobach.
+
+Do testów lokalnych uruchom [serwer](server.md). W emulatorze wpisz
+`ws://10.0.2.2:8080/game`, a na telefonie adres LAN z konsoli serwera.
 
 Każde urządzenie odtwarza nagrania z własnego APK, dlatego zbuduj je z tym samym
 kompletem plików `songs/`. Podczas rundy serwer otrzymuje wybór lub wpisany tekst.

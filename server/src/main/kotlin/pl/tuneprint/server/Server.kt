@@ -25,6 +25,16 @@ import java.net.SocketException
 
 fun main() {
     val port = System.getenv("PORT")?.toInt() ?: 8080
+    val host = System.getenv("HOST") ?: "0.0.0.0"
+    if (host == "0.0.0.0") {
+        printLanAddresses(port)
+    } else {
+        println("TunePrint · ws://$host:$port/game")
+    }
+    embeddedServer(CIO, host = host, port = port) { gameServer() }.start(wait = true)
+}
+
+private fun printLanAddresses(port: Int) {
     println("TunePrint · emulator Android: ws://10.0.2.2:$port/game")
     val addresses = try {
         NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
@@ -32,7 +42,6 @@ fun main() {
             .filter { it.isSiteLocalAddress }.map { it.hostAddress }.distinct()
     } catch (_: SocketException) { emptyList() }
     addresses.forEach { println("Adres dla telefonu w tej samej sieci: ws://$it:$port/game") }
-    embeddedServer(CIO, host = "0.0.0.0", port = port) { gameServer() }.start(wait = true)
 }
 
 internal fun Application.gameServer(games: GameServer = GameServer()) {

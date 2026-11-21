@@ -41,3 +41,12 @@ do końca rozgrywki. Pozostali mogą przejść dalej po własnych odpowiedziach.
 Serwer usuwa pokój po odejściu lub wygaśnięciu sesji ostatniej osoby.
 
 Testy reguł i protokołu uruchamia `./gradlew :server:test`.
+
+## Cloudflare Tunnel
+
+Na hoście tunelu ustaw serwerowi `HOST=127.0.0.1` i wolny `PORT`.
+W Cloudflare wskaż usługę `http://127.0.0.1:PORT`. W aplikacji w polu
+**Adres serwera** wpisz `wss://<publiczna-nazwa>/game`.
+Do zbudowania APK z tym adresem na pierwszym uruchomieniu służy
+`./gradlew :composeApp:assembleDebug -PtuneprintPublicHost=<publiczna-nazwa>`.
+Adres wybrany wcześniej na telefonie ma pierwszeństwo.

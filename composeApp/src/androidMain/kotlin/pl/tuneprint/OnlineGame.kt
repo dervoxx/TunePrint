@@ -45,7 +45,8 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     private val profile = application.getSharedPreferences("player", Application.MODE_PRIVATE)
     var active by mutableStateOf(saved.get<Boolean>("online") ?: true)
         private set
-    var endpoint by mutableStateOf(saved.get<String>("endpoint") ?: profile.getString("endpoint", null) ?: "ws://10.0.2.2:8080/game")
+    var endpoint by mutableStateOf(saved.get<String>("endpoint") ?: profile.getString("endpoint", null)
+        ?: application.getString(R.string.default_server_address))
         private set
     var name by mutableStateOf(saved.get<String>("name") ?: profile.getString("name", null) ?: "")
         private set

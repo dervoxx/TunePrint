@@ -36,6 +36,12 @@ android {
     sourceSets["main"].assets.srcDir(rootProject.file("songs"))
 
     defaultConfig {
+        val publicHost = providers.gradleProperty("tuneprintPublicHost").orNull
+        if (publicHost != null) {
+            require(Regex("[A-Za-z0-9.-]+").matches(publicHost)) { "Expected a public hostname" }
+        }
+        resValue("string", "default_server_address",
+            publicHost?.let { "wss://$it/game" } ?: "ws://10.0.2.2:8080/game")
         applicationId = "pl.tuneprint"
         minSdk = 24
         targetSdk = 36

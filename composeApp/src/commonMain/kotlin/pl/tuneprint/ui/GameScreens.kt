@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +40,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -199,7 +201,7 @@ fun HomeScreen(
     onNicknameChange: (String) -> Unit,
     onCreate: () -> Unit,
     onJoin: () -> Unit,
-    heading: String = "TunePrint",
+    heading: String = "Gra ze znajomymi",
     canEnter: Boolean = true,
     settings: @Composable () -> Unit = {},
     extraActions: @Composable () -> Unit = {},
@@ -214,8 +216,24 @@ fun HomeScreen(
             action()
         }
     }
-    Screen {
-        Title(heading)
+    Screen(compact = true) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 136.dp)
+            .clip(RoundedCornerShape(22.dp)).background(Ink.Surface), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.matchParentSize()) {
+                val center = Offset(size.width * .92f, size.height * .83f)
+                for (i in 1..12) {
+                    drawCircle(Ink.Highlight.copy(alpha = if (i % 4 == 0) .25f else .09f),
+                        radius = i * 13.dp.toPx(), center = center, style = Stroke(1.dp.toPx()))
+                }
+                drawCircle(Ink.Violet, 12.dp.toPx(), center)
+                drawCircle(Ink.Ground, 3.dp.toPx(), center)
+            }
+            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("TunePrint", style = MaterialTheme.typography.headlineLarge, color = Ink.Text,
+                    modifier = Modifier.semantics { heading() })
+                Text(heading, style = MaterialTheme.typography.bodyLarge, color = Ink.Muted)
+            }
+        }
         OutlinedTextField(
             value = nickname, onValueChange = { onNicknameChange(it.take(20)) },
             label = { Text("Twój nick") }, singleLine = true,
@@ -233,7 +251,7 @@ fun HomeScreen(
             shape = RoundedCornerShape(16.dp),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
         ) { Text("Dołącz do pokoju", textAlign = TextAlign.Center) }
-        extraActions()
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { extraActions() }
     }
 }
 
@@ -266,7 +284,10 @@ fun JoinRoomScreen(
         }
     }) {
         Title("Dołącz do pokoju")
-        if (onRefresh != null) OutlinedButton(onClick = onRefresh, enabled = canJoin) { Text("Odśwież listę") }
+        if (onRefresh != null) {
+            if (rooms.isEmpty() && canJoin && error == null) Text("Brak otwartych pokoi. Możesz wpisać kod poniżej.", color = Ink.Muted)
+            OutlinedButton(onClick = onRefresh, enabled = canJoin) { Text("Odśwież listę") }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             rooms.forEachIndexed { index, room ->
                 OutlinedButton(onClick = {
@@ -315,21 +336,37 @@ fun LobbyScreen(
     showOwnerCount: Boolean,
     onShowOwnerCountChange: (Boolean) -> Unit,
     canStart: Boolean = players.size >= 3,
+    startLabel: String = "Zaczynamy",
+    modeLabel: String? = null,
+    onShare: (() -> Unit)? = null,
+    ownerHintsAvailable: Boolean = true,
     modeControl: @Composable () -> Unit = {},
 ) {
     Screen(footer = {
-        PrimaryAction("Zaczynamy", onStart, canStart)
+        PrimaryAction(startLabel, onStart, canStart)
         TextButton(onClick = onLeave, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).panelMotion(4)) {
             Text("Wyjdź", color = Ink.Muted)
         }
     }) {
         Title("Lobby")
-        Text("Kod: $roomCode", color = Ink.Text, textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.fillMaxWidth().panelMotion(1))
+        Surface(color = Ink.Surface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Kod pokoju", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
+                Text(roomCode.chunked(3).joinToString(" "), color = Ink.Text, textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.headlineLarge.copy(letterSpacing = 3.sp, fontFeatureSettings = "tnum"))
+                if (onShare != null) TextButton(onClick = onShare) { Text("Udostępnij kod", color = Ink.Highlight) }
+            }
+        }
         val roundLimit = maxRounds.coerceAtLeast(1)
-        modeControl()
-        if (isHost) {
+        var settingsOpen by rememberSaveable(roomCode) { mutableStateOf(false) }
+        Text(listOfNotNull(modeLabel, "$roundCount ${roundNoun(roundCount)}", "15 s").joinToString("  ·  "), color = Ink.Muted,
+            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        if (isHost) OutlinedButton(onClick = { settingsOpen = !settingsOpen },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text(if (settingsOpen) "Zwiń ustawienia" else "Ustawienia gry", color = Ink.Text)
+        }
+        if (isHost && settingsOpen) {
+            modeControl()
             Row(Modifier.fillMaxWidth().panelMotion(1), horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { onRoundCountChange((roundCount - 1).coerceIn(1, roundLimit)) },
@@ -346,17 +383,10 @@ fun LobbyScreen(
                     Text("+", fontSize = 24.sp)
                 }
             }
-            Text("15 s", color = Ink.Muted, textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().panelMotion(1))
-        } else {
-            Text("$roundCount ${roundNoun(roundCount)} · 15 s", color = Ink.Muted, textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().panelMotion(1))
-        }
-        if (isHost) {
             Row(Modifier.fillMaxWidth().panelMotion(2), horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { onCapacityChange((capacity - 1).coerceIn(3, 8)) },
-                    enabled = capacity > 3, modifier = Modifier.size(48.dp),
+                    enabled = capacity > maxOf(3, players.size), modifier = Modifier.size(48.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink.Text), contentPadding = PaddingValues(0.dp)) {
                     Text("−", fontSize = 24.sp)
                 }
@@ -371,14 +401,14 @@ fun LobbyScreen(
                 }
             }
         }
-        if (isHost) {
+        if (ownerHintsAvailable && isHost && settingsOpen) {
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).panelMotion(2)
                 .toggleable(value = showOwnerCount, role = Role.Switch, onValueChange = onShowOwnerCountChange),
                 horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Pokaż liczbę playlist", modifier = Modifier.weight(1f))
                 Switch(checked = showOwnerCount, onCheckedChange = null)
             }
-        } else if (showOwnerCount) {
+        } else if (ownerHintsAvailable && showOwnerCount) {
             Text("Liczba playlist: widoczna", color = Ink.Muted, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().panelMotion(2))
         }
@@ -470,8 +500,18 @@ fun RoundScreen(
             color = if (seconds <= 5) Ink.Red else Ink.Highlight, trackColor = Ink.Raised)
         AudioWaveform(audioLevels, Modifier.fillMaxWidth().height(48.dp).panelMotion(2))
         if (textAnswer != null) {
+            val keyboard = LocalSoftwareKeyboardController.current
+            val focus = LocalFocusManager.current
             OutlinedTextField(value = textAnswer, onValueChange = onTextChange,
                 label = { Text("Twoja odpowiedź") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (textAnswer.isNotBlank() && acceptingAnswers && !submitted) {
+                        focus.clearFocus()
+                        keyboard?.hide()
+                        onSubmit()
+                    }
+                }),
                 enabled = !submitted && acceptingAnswers, modifier = Modifier.fillMaxWidth())
         } else OwnerChoices(players, selectedPlayerIds, onToggle, !submitted && acceptingAnswers)
         Text("Odpowiedzi ${players.count { it.answered }}/${players.size}", color = Ink.Muted,
@@ -534,6 +574,7 @@ fun ResultsScreen(
     players: List<UiPlayer>, remainingSeconds: Int, isReady: Boolean, onReady: () -> Unit,
     onReplay: () -> Unit, isFinal: Boolean = false,
     canReplay: Boolean = true,
+    onLeave: (() -> Unit)? = null,
 ) {
     val previousScores = remember(round) { players.associate { it.id to (it.score - it.roundPoints) } }
     var revealScores by remember(round) { mutableStateOf(false) }
@@ -546,6 +587,9 @@ fun ResultsScreen(
     Screen(scrollable = false, footer = {
         if (isFinal) {
             PrimaryAction(if (canReplay) "Zagraj ponownie" else "Czekamy na gospodarza", onReplay, canReplay)
+            if (onLeave != null) TextButton(onClick = onLeave, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("Opuść pokój", color = Ink.Muted)
+            }
         } else {
             Text("Gotowi ${players.count { it.ready }}/${players.size} · ${remainingSeconds.coerceAtLeast(0)} s",
                 color = Ink.Muted, textAlign = TextAlign.Center,
@@ -555,13 +599,13 @@ fun ResultsScreen(
     }) {
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!isFinal) item(key = "round") { RoundNumber(round, totalRounds) }
-            item(key = "title") { Title(if (isFinal) "Koniec gry" else "Wyniki rundy", 1) }
+            item(key = "title") { Title(if (isFinal) "Ranking końcowy" else "Wyniki rundy", 1) }
             item(key = "track") {
                 Surface(color = Ink.Surface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().panelMotion(1)) {
                     Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(trackTitle, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-                        Text(trackArtist, color = Ink.Muted, textAlign = TextAlign.Center)
+                        if (trackArtist.isNotBlank()) Text(trackArtist, color = Ink.Muted, textAlign = TextAlign.Center)
                         Text("Na liście: ${ownerNames.joinToString(", ")}", color = Ink.Highlight, textAlign = TextAlign.Center)
                     }
                 }
@@ -591,7 +635,8 @@ private fun ResultRow(player: UiPlayer, rank: Int, showAnswer: Boolean, roster: 
         UiOutcome.TIMEOUT -> "Brak odpowiedzi" to Ink.Muted
         UiOutcome.NONE -> "" to Ink.Muted
     }
-    Surface(color = Ink.Surface, shape = RoundedCornerShape(16.dp), modifier = modifier.fillMaxWidth()) {
+    Surface(color = if (rank == 0 && !showReadyStatus) Ink.Raised else Ink.Surface,
+        shape = RoundedCornerShape(16.dp), modifier = modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${rank + 1}.", color = Ink.Muted, fontWeight = FontWeight.Bold)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

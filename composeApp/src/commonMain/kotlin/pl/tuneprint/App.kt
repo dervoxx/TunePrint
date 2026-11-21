@@ -130,7 +130,7 @@ fun App(
                             }
                             frame.room.route == RoomRoute.HOME -> HomeScreen(
                                 frame.nickname, onNicknameChange, onCreateRoom, onOpenJoin,
-                                heading = "TunePrint · demo offline",
+                                heading = "Gra offline",
                                 extraActions = { Button(onClick = onOpenOnline) { Text("Graj online") } },
                             )
                             frame.room.route == RoomRoute.JOIN -> JoinRoomScreen(

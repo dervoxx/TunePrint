@@ -23,17 +23,19 @@ APK powstaje w `composeApp/build/outputs/apk/debug/composeApp-debug.apk`.
 
 Wspólny ekran Compose znajduje się w `composeApp/src/commonMain/`,
 a aktywność i manifest Androida w `composeApp/src/androidMain/`.
-Ekran startowy otwiera demo offline z trzema symulowanymi przeciwnikami.
+Ekran startowy otwiera grę ze znajomymi. Przycisk **Zagraj offline** uruchamia
+lokalną grę z trzema symulowanymi przeciwnikami.
 
 ## Gra online
 
 1. Uruchom serwer poleceniem `./gradlew :server:run` (Windows: `gradlew.bat :server:run`).
-2. W Androidzie wybierz **Graj online**. Emulator korzysta z `ws://10.0.2.2:8080/game`.
-   Na telefonie wpisz adres komputera w tej samej sieci, np. `ws://192.168.1.10:8080/game`.
+2. Emulator korzysta z `ws://10.0.2.2:8080/game`. Na telefonie rozwiń **Adres serwera**
+   i wpisz IP komputera w tej samej sieci Wi-Fi lub pełny adres z konsoli serwera.
    Zezwól na połączenia do portu TCP 8080 w sieci lokalnej.
-3. Wpisz nick, rozwiń **Moja playlista** i wybierz co najmniej jeden utwór.
-   Utwórz pokój lub dołącz przez listę albo kod. Gospodarz wybiera tryb
-   (właściciele, tytuł lub wykonawca) i rozpoczyna grę przy co najmniej trzech osobach.
+3. Wpisz nick i naciśnij **Wybierz utwory do gry**. Po wejściu do pokoju aplikacja
+   zapamięta nick, adres i playlistę na tym urządzeniu. Utwórz pokój lub dołącz
+   przez listę albo kod. Gospodarz może udostępnić kod, wybrać tryb
+   (właściciele, tytuł lub wykonawca) i rozpocząć grę przy co najmniej trzech osobach.
 
 Każde urządzenie odtwarza nagrania z własnego APK, dlatego zbuduj je z tym samym
 kompletem plików `songs/`. Podczas rundy serwer otrzymuje wybór lub wpisany tekst.

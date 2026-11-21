@@ -3,10 +3,15 @@ package pl.tuneprint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -22,19 +27,16 @@ private val modes = mapOf("OWNERS" to "Właściciele", "TITLE" to "Tytuł", "ART
 fun OnlineScreens(game: OnlineGame, onExit: () -> Unit) {
     val room = game.state
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
-    BackHandler {
-        when {
-            room != null || game.playerId != null -> confirmLeave = true
-            game.browsing || game.busy -> game.leave()
-            else -> onExit()
-        }
+    BackHandler(enabled = room != null || game.playerId != null || game.browsing || game.busy) {
+        if (room != null || game.playerId != null) confirmLeave = true else game.leave()
     }
     TunePrintTheme {
         Surface(Modifier.fillMaxSize()) {
             Column {
-                val status = game.message ?: game.audioError
+                val status = game.message?.takeUnless { game.browsing && !game.busy } ?: game.audioError
                 if (status != null || game.busy) {
-                    Row(Modifier.statusBarsPadding().fillMaxWidth().padding(horizontal = 16.dp),
+                    Row(Modifier.statusBarsPadding().fillMaxWidth().padding(horizontal = 16.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
                         verticalAlignment = Alignment.CenterVertically) {
                         Text(status ?: "Łączenie…", modifier = Modifier.weight(1f))
                         if (game.audioError != null) TextButton(onClick = game::retryAudio) { Text("Ponów audio") }
@@ -46,11 +48,11 @@ fun OnlineScreens(game: OnlineGame, onExit: () -> Unit) {
                     game.browsing -> JoinRoomScreen(game.code, game::changeCode, { game.enterRoom(true) }, game::leave,
                         rooms = game.rooms.map { UiRoom(it.code, it.hostName, it.roundCount) },
                         onSelectRoom = { if (!game.busy) { game.changeCode(it); game.enterRoom(true) } },
-                        error = null, onRefresh = game::browse, canJoin = !game.busy)
+                        error = game.message, onRefresh = game::browse, canJoin = !game.busy)
                     else -> HomeScreen(game.name, game::changeName, { game.enterRoom(false) }, game::browse,
-                        heading = "TunePrint · online", canEnter = !game.busy && game.catalog.isNotEmpty(),
+                        heading = "Gra ze znajomymi", canEnter = !game.busy && game.catalog.isNotEmpty(),
                         settings = { OnlineSettings(game) },
-                        extraActions = { TextButton(onClick = onExit) { Text("Demo offline") } })
+                        extraActions = { TextButton(onClick = onExit) { Text("Zagraj offline", color = MaterialTheme.colorScheme.secondary) } })
                 }
             }
         }
@@ -63,11 +65,11 @@ fun OnlineScreens(game: OnlineGame, onExit: () -> Unit) {
 
 @Composable
 private fun OnlineSettings(game: OnlineGame) {
-    OutlinedTextField(value = game.endpoint, onValueChange = game::changeEndpoint, singleLine = true,
-        label = { Text("Adres serwera WebSocket") }, enabled = !game.busy, modifier = Modifier.fillMaxWidth())
+    var editServer by rememberSaveable { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
     OutlinedButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
-        Text("Moja playlista · wybrano ${game.catalog.size}/${DemoAudio.byKey.size}")
+        Text(if (game.catalog.isEmpty()) "Wybierz utwory do gry" else "Moja playlista · ${game.catalog.size}/${DemoAudio.byKey.size}",
+            color = MaterialTheme.colorScheme.onSurface)
     }
     if (expanded) Column {
         DemoAudio.byKey.forEach { (key, track) ->
@@ -76,10 +78,21 @@ private fun OnlineSettings(game: OnlineGame) {
                 .toggleable(checked, enabled = !game.busy, role = Role.Checkbox) { game.toggleTrack(key) },
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Checkbox(checked, onCheckedChange = null)
-                Text(track.title)
+                Column {
+                    Text(track.title)
+                    if (track.artist.isNotBlank()) Text(track.artist, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
+    TextButton(onClick = { editServer = !editServer }, modifier = Modifier.fillMaxWidth()) {
+        Text(if (editServer) "Zwiń adres serwera" else "Adres serwera", color = MaterialTheme.colorScheme.secondary)
+    }
+    if (editServer) OutlinedTextField(value = game.endpoint, onValueChange = game::changeEndpoint, singleLine = true,
+        label = { Text("IP komputera lub adres WebSocket") },
+        supportingText = { Text("Użyj adresu podanego przy uruchomieniu serwera.") },
+        enabled = !game.busy, modifier = Modifier.fillMaxWidth())
 }
 
 @Composable
@@ -88,6 +101,7 @@ private fun OnlineRoom(room: RoomState, game: OnlineGame, onLeave: () -> Unit) {
         room.toUiPlayers()
     }
     val host = room.hostId == game.playerId
+    val context = LocalContext.current
     val seconds = ((game.remaining + 999) / 1000).toInt()
     when (room.phase) {
         "LOBBY" -> LobbyScreen(players, { game.command(ClientCommand("start")) }, room.code, onLeave,
@@ -97,12 +111,29 @@ private fun OnlineRoom(room: RoomState, game: OnlineGame, onLeave: () -> Unit) {
             showOwnerCount = room.showOwnerCount,
             onShowOwnerCountChange = { game.command(ClientCommand("configure", showOwnerCount = it)) },
             canStart = game.sessionConnected && host && room.canStart,
+            startLabel = when {
+                !game.sessionConnected -> "Łączenie…"
+                !host -> "Czekamy na gospodarza"
+                !room.canStart -> "Potrzeba 3 połączonych osób"
+                else -> "Rozpocznij grę"
+            },
+            modeLabel = modes[room.mode], ownerHintsAvailable = room.mode == "OWNERS",
+            onShare = {
+                val share = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, "Dołącz do mojego pokoju w TunePrint. Kod: ${room.code}")
+                context.startActivity(android.content.Intent.createChooser(share, "Udostępnij kod pokoju"))
+            },
             modeControl = {
-                Text("Tryb gry · ${modes[room.mode]}")
-                if (host) modes.forEach { (mode, label) ->
-                    OutlinedButton(onClick = { game.command(ClientCommand("configure", mode = mode)) },
-                        enabled = game.sessionConnected && room.mode != mode, modifier = Modifier.fillMaxWidth()) {
-                        Text(label)
+                Column {
+                    Text("Tryb gry", style = MaterialTheme.typography.titleMedium)
+                    modes.forEach { (mode, label) ->
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .selectable(selected = mode == room.mode, enabled = game.sessionConnected,
+                                role = Role.RadioButton, onClick = { game.command(ClientCommand("configure", mode = mode)) }),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = mode == room.mode, onClick = null)
+                            Text(label, modifier = Modifier.padding(start = 12.dp))
+                        }
                     }
                 }
             })
@@ -122,7 +153,7 @@ private fun OnlineRoom(room: RoomState, game: OnlineGame, onLeave: () -> Unit) {
                 room.players.filter { it.id in result.ownerIds }.map { it.name }, players, seconds,
                 game.playerId in room.readyIds, { game.command(ClientCommand("ready", roundNumber = room.roundNumber)) },
                 onReplay = { game.command(ClientCommand("replay")) }, isFinal = room.phase == "FINISHED",
-                canReplay = host && game.sessionConnected)
+                canReplay = host && game.sessionConnected, onLeave = onLeave)
         }
     }
 }

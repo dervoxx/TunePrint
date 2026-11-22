@@ -35,8 +35,6 @@ android {
     namespace = "pl.tuneprint"
     compileSdk = 36
 
-    sourceSets["main"].assets.srcDir(rootProject.file("songs"))
-
     defaultConfig {
         val localConfig = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
             .asText.map { text -> Properties().apply { text.reader().use(::load) }.getProperty("spotifyClientId", "") }

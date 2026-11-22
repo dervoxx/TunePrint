@@ -26,10 +26,9 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import pl.tuneprint.audio.DemoAudio
 import pl.tuneprint.audio.RoundAudioPlayer
-import pl.tuneprint.catalog.DemoTracks
 import pl.tuneprint.game.GameSession
+import pl.tuneprint.net.ImportTrack
 import pl.tuneprint.net.ClientCommand
 import pl.tuneprint.net.RoomListing
 import pl.tuneprint.net.RoomState
@@ -50,18 +49,19 @@ internal fun serverRequest(input: String): Request {
 /** Socket callbacks, room changes and playback are serialized on the main thread. */
 class OnlineGame(application: Application, private val saved: SavedStateHandle) : AndroidViewModel(application) {
     private val profile = application.getSharedPreferences("player", Application.MODE_PRIVATE)
-    var active by mutableStateOf(saved.get<Boolean>("online") ?: true)
-        private set
     var endpoint by mutableStateOf(saved.get<String>("endpoint") ?: profile.getString("endpoint", null)
         ?: application.getString(R.string.default_server_address))
         private set
     var name by mutableStateOf(saved.get<String>("name") ?: profile.getString("name", null) ?: "")
         private set
-    var catalog by mutableStateOf((saved.get<ArrayList<String>>("catalog")?.toSet()
-        ?: profile.getStringSet("catalog", emptySet()).orEmpty()).intersect(DemoAudio.byKey.keys))
+    internal var topTracks by mutableStateOf<List<ImportTrack>>(emptyList())
         private set
-    internal var topTracks by mutableStateOf<List<RankedTrack>>(emptyList())
+    var catalog by mutableStateOf(emptySet<String>())
         private set
+    var preparing by mutableStateOf(false)
+        private set
+    private var preparedOnSocket = false
+    private var startedImport = false
     var importing by mutableStateOf(false)
         private set
     var importMessage by mutableStateOf<String?>(null)
@@ -75,7 +75,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         private set
     var state by mutableStateOf<RoomState?>(null)
         private set
-    var playerId by mutableStateOf(saved.get<String>("playerId"))
+    var playerId by mutableStateOf(saved.get<String>("streamPlayerId"))
         private set
     var busy by mutableStateOf(false)
         private set
@@ -87,14 +87,12 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         private set
     var remaining by mutableLongStateOf(0L)
         private set
-    var levels by mutableStateOf(emptyList<Float>())
-        private set
     var owners by mutableStateOf(saved.get<ArrayList<String>>("owners")?.toSet() ?: emptySet())
         private set
     var answerText by mutableStateOf(saved.get<String>("answerText") ?: "")
         private set
 
-    private var token: String? = saved["token"]
+    private var token: String? = saved["streamToken"]
     private val handler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
         .dns(TunePrintDns())
@@ -108,21 +106,14 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     private var retryDelay = 1000L
     private val reconnect = Runnable { connectForSession() }
     private var deadline = 0L
-    private val audio = RoundAudioPlayer(application)
+    private val audio = RoundAudioPlayer()
     private var playingKey: String? = null
     private val tick = object : Runnable {
         override fun run() {
             remaining = remainingNow()
             updatePlayback()
-            if (playingKey != null) levels = audio.levels()
             if (foreground && sessionConnected && state?.phase in timedPhases) handler.postDelayed(this, 100)
         }
-    }
-
-    fun enter(nickname: String) {
-        active = true
-        saved["online"] = true
-        if (name.isBlank()) changeName(nickname)
     }
 
     fun changeName(value: String) {
@@ -131,27 +122,20 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     }
 
     fun changeEndpoint(value: String) {
-        if (busy || state != null) return
+        if (busy || preparing || state != null || endpoint == value) return
         closeSocket()
+        catalog = emptySet()
         endpoint = value
         saved["endpoint"] = value
         message = null
     }
 
-    fun toggleTrack(key: String) {
-        if (busy || state != null || key !in DemoAudio.byKey) return
-        catalog = if (key in catalog) catalog - key else catalog + key
-        saved["catalog"] = ArrayList(catalog)
-    }
-
-    fun selectTopTracks() {
-        if (busy || state != null) return
-        catalog = catalog + topTracks.mapNotNull { it.key }
-        saved["catalog"] = ArrayList(catalog)
-    }
-
     fun importTopTracks() {
-        if (importing || busy || state != null) return
+        if (importing || preparing || busy || state != null) return
+        message = null
+        startedImport = true
+        catalog = emptySet()
+        topTracks = emptyList()
         val app = getApplication<Application>()
         importing = true
         importMessage = null
@@ -162,11 +146,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
                     app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-                topTracks = imported.map { track ->
-                    RankedTrack(track.id, track.title, track.artists.joinToString(", "),
-                        DemoTracks.match(track.title, track.artists))
-                }
-                if (topTracks.isEmpty()) importMessage = "Spotify nie zwróciło jeszcze najczęściej słuchanych utworów."
+                useSpotifyRanking(imported)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: SpotifyImportException) {
@@ -185,9 +165,18 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         importJob?.cancel()
     }
 
-    fun clearTopTracks() {
-        topTracks = emptyList()
+    internal fun useSpotifyRanking(imported: List<SpotifyTrack>) {
+        topTracks = imported.map { ImportTrack(it.id, it.title, it.artists) }
+        if (topTracks.isEmpty()) {
+            importMessage = "Spotify nie zwróciło jeszcze najczęściej słuchanych utworów."
+        } else prepareCatalog()
+    }
+
+    fun prepareCatalog() {
+        if (topTracks.isEmpty() || preparing || busy || state != null) return
+        preparing = true
         importMessage = null
+        requestEntry(ClientCommand("import", tracks = topTracks))
     }
 
     fun changeCode(value: String) {
@@ -196,7 +185,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     }
 
     fun browse() {
-        if (busy) return
+        if (busy || catalog.isEmpty()) return
         browsing = true
         requestEntry(ClientCommand("list"))
     }
@@ -204,7 +193,9 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     fun enterRoom(join: Boolean) {
         if (busy || name.isBlank() || catalog.isEmpty()) return
         requestEntry(ClientCommand(if (join) "join" else "create", name = name.trim(),
-            code = if (join) code else null, catalogKeys = catalog.toList()))
+            code = if (join) code else null,
+            catalogKeys = catalog.toList().takeIf { preparedOnSocket },
+            tracks = topTracks.filter { it.id in catalog }.takeUnless { preparedOnSocket }))
     }
 
     private fun requestEntry(command: ClientCommand) {
@@ -215,7 +206,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private fun connectForSession() {
         val credential = token ?: return
-        if (!active || !foreground || socket != null) return
+        if (!foreground || socket != null) return
         busy = true
         message = "Wznawianie połączenia…"
         awaitingResume = true
@@ -228,7 +219,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
             serverRequest(endpoint)
         } catch (_: IllegalArgumentException) {
             busy = false
-            message = "Wpisz IP komputera, np. 192.168.1.10, lub pełny adres WebSocket."
+            showRequestError("Wpisz IP komputera, np. 192.168.1.10, lub pełny adres WebSocket.")
             return
         }
         socket = client.newWebSocket(request, object : WebSocketListener() {
@@ -277,6 +268,14 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private fun receive(event: ServerEvent, receivedAt: Long) {
         when (event.type) {
+            "catalog" -> {
+                if (!preparing) return
+                catalog = event.catalogKeys.orEmpty().toSet().intersect(topTracks.map { it.id }.toSet())
+                preparedOnSocket = catalog.isNotEmpty()
+                busy = false
+                preparing = false
+                if (catalog.isEmpty()) importMessage = "Żaden z Twoich top utworów nie ma dostępnego fragmentu."
+            }
             "rooms" -> {
                 rooms = event.rooms
                 if (browsing) busy = false
@@ -285,11 +284,11 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
                 val room = event.state ?: return
                 event.token?.let {
                     token = it
-                    saved["token"] = it
+                    saved["streamToken"] = it
                     val serverUrl = serverRequest(endpoint).url
                     profile.edit {
                         putString("name", name)
-                        putStringSet("catalog", catalog.toSet())
+                        remove("catalog")
                         if (serverUrl.username.isEmpty() && serverUrl.password.isEmpty() && serverUrl.query == null) {
                             putString("endpoint", endpoint)
                         } else remove("endpoint")
@@ -297,7 +296,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
                 }
                 event.playerId?.let {
                     playerId = it
-                    saved["playerId"] = it
+                    saved["streamPlayerId"] = it
                 }
                 changeCode(room.code)
                 val resuming = awaitingResume
@@ -322,7 +321,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
             "error" -> {
                 if (awaitingResume) resetRoom()
                 busy = false
-                message = event.message ?: "Serwer odrzucił polecenie."
+                showRequestError(event.message ?: "Serwer odrzucił polecenie.")
             }
             "left" -> resetRoom()
         }
@@ -332,7 +331,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         closeSocket()
         sessionConnected = false
         busy = false
-        message = reason
+        showRequestError(reason)
         stopAudio()
         handler.removeCallbacks(tick)
         if (token != null && foreground) {
@@ -341,7 +340,15 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         }
     }
 
+    private fun showRequestError(reason: String) {
+        if (preparing) {
+            preparing = false
+            importMessage = reason
+        } else message = reason
+    }
+
     private fun closeSocket() {
+        preparedOnSocket = false
         handler.removeCallbacks(reconnect)
         val old = socket
         socket = null
@@ -364,8 +371,8 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         closeSocket()
         stopAudio()
         handler.removeCallbacks(tick)
-        saved.remove<String>("token")
-        saved.remove<String>("playerId")
+        saved.remove<String>("streamToken")
+        saved.remove<String>("streamPlayerId")
         saved.remove<String>("draftRound")
         token = null
         playerId = null
@@ -378,14 +385,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         message = null
         changeCode("")
         clearDraft()
-    }
-
-    fun exit() {
-        cancelImport()
-        clearTopTracks()
-        leave()
-        active = false
-        saved["online"] = false
+        ensureStartup()
     }
 
     private fun clearDraft() {
@@ -428,8 +428,14 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     fun resume() {
         foreground = true
-        connectForSession()
+        ensureStartup()
         restartClock()
+    }
+
+    private fun ensureStartup() {
+        if (!foreground) return
+        if (token != null) connectForSession()
+        else if (!startedImport) importTopTracks()
     }
 
     fun pause() {
@@ -453,12 +459,12 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         }
         if (playingKey == key || audioError != null) return
         playingKey = key
-        val track = DemoAudio.byKey[key]
-        if (track == null) {
-            audioError = "Brak nagrania dla tej rundy."
+        val preview = room.previewUrl
+        if (preview == null) {
+            audioError = "Serwer nie udostępnił fragmentu dla tej rundy."
             return
         }
-        audio.play(track.assetName, track.startAtMs, onStarted = {}, onError = { audioError = it },
+        audio.play(preview, onStarted = {}, onError = { audioError = it },
             elapsedInRoundMs = { GameSession.ROUND_MS - remainingNow() })
     }
 
@@ -471,7 +477,6 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         if (playingKey != null) audio.stop()
         playingKey = null
         audioError = null
-        levels = emptyList()
     }
 
     override fun onCleared() {
@@ -486,5 +491,3 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         val timedPhases = setOf("COUNTDOWN", "ROUND", "RESULTS")
     }
 }
-
-internal data class RankedTrack(val id: String, val title: String, val artist: String, val key: String?)

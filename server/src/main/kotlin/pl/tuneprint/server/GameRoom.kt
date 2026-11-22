@@ -25,7 +25,8 @@ internal class GameRoom(val code: String, first: Seat) {
     private var deadline = 0L
     private var tracks = emptyList<CatalogTrack>()
     private val track get() = tracks[roundNumber - 1]
-    private fun pool(selectedMode: String) = DemoCatalog.pool(seats.mapValues { it.value.catalog })
+    private var audioKey = ""
+    private fun pool(selectedMode: String) = roomCatalog(seats.values)
         .filter { RoundScoring.isEligible(selectedMode, it, seats.keys) }
     private val maxRounds get() = pool(mode).size
     val canJoin get() = phase == Phase.LOBBY && seats.size < capacity
@@ -171,6 +172,7 @@ internal class GameRoom(val code: String, first: Seat) {
     private fun nextRound(now: Long) {
         clearRound()
         roundNumber++
+        audioKey = java.util.UUID.randomUUID().toString()
         phase = Phase.COUNTDOWN
         deadline = now + COUNTDOWN_MS
     }
@@ -196,7 +198,8 @@ internal class GameRoom(val code: String, first: Seat) {
         capacity = capacity, roundCount = roundCount, maxRounds = maxRounds,
         showOwnerCount = showOwnerCount, mode = mode, phase = phase.name, roundNumber = roundNumber,
         remainingMs = if (timed) (deadline - now).coerceAtLeast(0) else 0,
-        audioKey = if (phase == Phase.COUNTDOWN || phase == Phase.ROUND) track.key else null,
+        audioKey = if (phase == Phase.COUNTDOWN || phase == Phase.ROUND) audioKey else null,
+        previewUrl = if (phase == Phase.COUNTDOWN || phase == Phase.ROUND) track.previewUrl else null,
         ownerCountHint = if (mode == "OWNERS" && showOwnerCount && phase == Phase.ROUND) track.ownerIds.size else null,
         answeredIds = answers.keys.toList(), readyIds = ready.toList(),
         ranking = seats.keys.map { totals[it] ?: NetRank(it, 0, 0) }

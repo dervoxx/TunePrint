@@ -1,10 +1,14 @@
-# Katalog demonstracyjny
+# Muzyka w rundach
 
-Gracz wybiera utwory z listy dziesięciu nagrań. Serwer tworzy pulę z wyborów uczestników pokoju. Jeśli dwie osoby wybiorą ten sam utwór, w puli pojawi się on raz, z obiema osobami jako właścicielami.
+Android pobiera ranking gracza za jego zgodą. Do serwera gry wysyła identyfikatory
+utworów, tytuły i wykonawców. Token Spotify służy wyłącznie do importu na telefonie.
 
-Klucze `demo-01`–`demo-10` i metadane są wspólne dla Androida i serwera. Android dobiera lokalny plik i początek fragmentu według klucza. Nagrania umieszcza się w ignorowanym katalogu `songs/`. Do udostępnienia wersji z dźwiękiem potrzebne są prawa do użycia muzyki i rozpowszechniania nagrań w grze.
+Serwer sprawdza do 12 pierwszych unikalnych utworów z rankingu i dobiera
+maksymalnie 5 różnych nagrań z fragmentem w polskim katalogu Apple.
+Pomija pozycje bez dopasowania. Wspólny utwór może należeć do kilku uczestników.
+Klient odtwarza fragment przez HTTPS. APK nie wymaga plików z katalogu `songs/`.
 
-Gracz może też zaimportować najczęściej słuchane utwory ze swojego konta Spotify.
-Do rundy można wybrać pozycje, do których aplikacja ma lokalne nagranie.
-Spotify dostarcza listę utworów. Dźwięk pochodzi z plików dołączonych do gry.
-[Konfiguracja importu Spotify](spotify.md)
+Standardowe warunki iTunes Search API ograniczają wykorzystanie podglądów do promocji
+treści i wyłączają niezależne zastosowania rozrywkowe. Użycie podglądów w quizie
+wymaga uprawnień obejmujących ten sposób odtwarzania.
+[Warunki Apple](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/)

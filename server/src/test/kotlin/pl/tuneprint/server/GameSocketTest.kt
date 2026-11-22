@@ -23,24 +23,30 @@ class GameSocketTest {
     fun threeConnectionsPlayOneMatchOverJson() = testApplication {
         val now = AtomicLong(0)
         val games = GameServer(now::get)
-        application { gameServer(games) }
+        application { gameServer(games, AppleCatalog { recording.takeIf { _ -> it == importedTrack } }) }
         val client = createClient { install(WebSockets) }
         val sockets = List(3) { client.webSocketSession("/game") }
         try {
             val host = sockets.first()
             host.send("{")
             assertEquals("error", host.until { true }.type)
-            val keys = listOf(DemoCatalog.keys.first())
-            host.command(ClientCommand("create", name = "A", catalogKeys = keys))
+            host.command(ClientCommand("create", name = "A", catalogKeys = listOf("demo-01")))
+            assertEquals("error", host.until { true }.type)
+            host.command(ClientCommand("create", name = "A", tracks = listOf(importedTrack)))
             val admission = host.until { it.token != null }
             val code = admission.state!!.code
             for ((i, peer) in sockets.drop(1).withIndex()) {
+                peer.command(ClientCommand("import", tracks = listOf(importedTrack)))
+                val keys = peer.until { it.type == "catalog" }.catalogKeys
+                assertEquals(listOf(importedTrack.id), keys)
                 peer.command(ClientCommand("join", name = "Gość ${i + 1}", code = code, catalogKeys = keys))
                 peer.until { it.token != null }
             }
             host.command(ClientCommand("start"))
             val countdown = host.until { it.state?.phase == "COUNTDOWN" }.state!!
             assertNull(countdown.result)
+            assertEquals(recording.previewUrl, countdown.previewUrl)
+            assertTrue(countdown.audioKey != importedTrack.id && countdown.audioKey != recording.key)
             val ids = countdown.players.map { it.id }
             now.set(3_000)
             for (peer in sockets) {
@@ -48,6 +54,7 @@ class GameSocketTest {
             }
             val results = sockets.map { it.until { event -> event.state?.phase == "FINISHED" }.state!! }
             assertTrue(results.all { it == results.first() })
+            assertNull(results.first().previewUrl)
             assertEquals(listOf(100, 100, 100), results.first().ranking.map { it.points })
         } finally {
             sockets.forEach { it.close() }

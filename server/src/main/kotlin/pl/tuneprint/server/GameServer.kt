@@ -12,7 +12,7 @@ internal class Peer(val send: (ServerEvent) -> Unit) {
     fun error(message: String) = send(ServerEvent("error", message = message))
 }
 
-internal class Seat(name: String, val catalog: Set<String>, var peer: Peer?) {
+internal class Seat(name: String, val catalog: List<Recording>, var peer: Peer?) {
     val player = NetPlayer(UUID.randomUUID().toString(), name)
     var token: String? = UUID.randomUUID().toString()
     var disconnectedAt: Long? = null
@@ -26,7 +26,7 @@ internal class GameServer(
     private val rooms = mutableMapOf<String, GameRoom>()
 
     @Synchronized
-    fun command(peer: Peer, cmd: ClientCommand) {
+    fun command(peer: Peer, cmd: ClientCommand, catalog: Map<String, Recording> = emptyMap()) {
         val now = clock()
         try {
             val room = rooms[peer.roomCode]
@@ -40,7 +40,7 @@ internal class GameServer(
                 }
                 "create", "join", "resume" -> {
                     require(peer.roomCode == null) { "Jesteś już w pokoju." }
-                    if (cmd.type == "resume") resume(peer, cmd, now) else admit(peer, cmd, now)
+                    if (cmd.type == "resume") resume(peer, cmd, now) else admit(peer, cmd, now, catalog)
                 }
                 else -> {
                     requireNotNull(room) { "Dołącz do pokoju." }
@@ -60,12 +60,12 @@ internal class GameServer(
         }
     }
 
-    private fun admit(peer: Peer, cmd: ClientCommand, now: Long) {
+    private fun admit(peer: Peer, cmd: ClientCommand, now: Long, catalog: Map<String, Recording>) {
         val name = cmd.name.orEmpty().trim()
         require(name.length in 1..20 && name.none(Char::isISOControl)) { "Podaj nazwę od 1 do 20 znaków." }
-        val keys = cmd.catalogKeys.orEmpty().toSet()
-        require(keys.isNotEmpty() && DemoCatalog.keys.containsAll(keys)) { "Wybierz utwory z katalogu." }
-        val seat = Seat(name, keys, peer)
+        val keys = cmd.catalogKeys?.toSet() ?: catalog.keys
+        require(keys.isNotEmpty() && catalog.keys.containsAll(keys)) { "Do gry potrzeba utworów Spotify z dostępnym fragmentem Apple." }
+        val seat = Seat(name, keys.map(catalog::getValue).distinctBy { it.key }, peer)
         val room = if (cmd.type == "create") {
             require(rooms.size < 128) { "Osiągnięto limit pokoi." }
             val code = generateSequence { Random.nextInt(100_000, 1_000_000).toString() }.first { it !in rooms }

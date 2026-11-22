@@ -1,0 +1,72 @@
+﻿package pl.tuneprint.server
+
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import pl.tuneprint.net.ImportTrack
+import pl.tuneprint.net.isApplePreviewUrl
+import kotlin.test.*
+
+internal val importedTrack = ImportTrack("1234567890123456789012", "Fiji", listOf("Taco Hemingway"))
+internal val recording = Recording("apple-123", "Fiji", "Taco Hemingway", "https://audio-ssl.itunes.apple.com/example.m4a")
+
+class AppleCatalogTest {
+    private fun result(title: String, artist: String, url: String = recording.previewUrl) =
+        """{"kind":"song","trackId":123,"trackName":"$title","artistName":"$artist","previewUrl":"$url"}"""
+
+    @Test fun fullTitleAndCreditsAreRequired() {
+        val song = ImportTrack(importedTrack.id, "oNE", listOf("A", "B"))
+        val candidates = listOf(result("One (Live)", "A & B"), result("One", "A"), result("one", "A & B", "http://example.org/x"))
+        fun search(rows: List<String>) = matchApple(song, """{"results":[${rows.joinToString()}]}""")
+        assertNull(search(candidates))
+        val found = assertNotNull(search(candidates + result("ONE", "B & A")))
+        assertEquals("apple-123", found.key)
+        assertEquals(recording.previewUrl, found.previewUrl)
+    }
+
+    @Test fun onlyAppleHttpsOriginsAreAccepted() {
+        assertTrue(isApplePreviewUrl("https://aod.itunes.apple.com/files/a.m4a"))
+        assertTrue(isApplePreviewUrl("https://a.mzstatic.com/files/a.m4a"))
+        listOf("http://a.mzstatic.com/a", "https://a.mzstatic.com.example.org/a",
+            "https://user@a.mzstatic.com/a", "https://evil.test@a.mzstatic.com/a",
+            "https://a.mzstatic.com:8080/a", "https://a.mzstatic.com/a#bad"
+        ).forEach { assertFalse(isApplePreviewUrl(it), it) }
+    }
+
+    @Test fun concurrentImportsShareSearchesAndCacheMisses() = runBlocking {
+        var count = 0
+        val apple = AppleCatalog { track ->
+            count++
+            delay(10)
+            recording.takeIf { track.title == importedTrack.title }
+        }
+        val missing = importedTrack.copy(id = "A".repeat(22), title = "Missing")
+        val tracks = listOf(importedTrack, missing, importedTrack)
+        val results = List(3) { async { apple.resolve(tracks) } }.awaitAll()
+        assertTrue(results.all { it == mapOf(importedTrack.id to recording) })
+        assertEquals(2, count)
+        assertFailsWith<IllegalArgumentException> { apple.resolve(listOf(importedTrack.copy(id = "bad"))) }
+        assertEquals(2, count)
+    }
+
+    @Test fun importStopsAtFiveRecordingsOrTwelveAttempts() = runBlocking {
+        val tracks = (1..16).map { importedTrack.copy(id = it.toString().padStart(22, '0'), title = "Song $it") }
+        var calls = 0
+        val allFound = AppleCatalog { calls++; recording.copy(key = it.id) }
+        assertEquals(tracks.take(5).map { it.id }, allFound.resolve(tracks).keys.toList())
+        assertEquals(5, calls)
+        calls = 0
+        val noneFound = AppleCatalog { calls++; null }
+        assertTrue(noneFound.resolve(tracks).isEmpty())
+        assertEquals(12, calls)
+    }
+
+    @Test fun anInterruptedSearchPreservesAlreadyPlayableRecordings() = runBlocking {
+        val second = importedTrack.copy(id = "A".repeat(22), title = "Another")
+        val apple = AppleCatalog { if (it == importedTrack) recording else throw java.io.IOException() }
+        assertEquals(mapOf(importedTrack.id to recording), apple.resolve(listOf(importedTrack, second)))
+        assertFailsWith<java.io.IOException> { apple.resolve(listOf(second)) }
+        Unit
+    }
+}

@@ -44,11 +44,11 @@ private fun printLanAddresses(port: Int) {
     addresses.forEach { println("Adres dla telefonu w tej samej sieci: ws://$it:$port/game") }
 }
 
-internal fun Application.gameServer(games: GameServer = GameServer()) {
+internal fun Application.gameServer(games: GameServer = GameServer(), apple: AppleCatalog = AppleCatalog()) {
     install(WebSockets) {
         pingPeriodMillis = 15_000
         timeoutMillis = 15_000
-        maxFrameSize = 16 * 1024L
+        maxFrameSize = 128 * 1024L
     }
     launch {
         while (isActive) {
@@ -65,6 +65,7 @@ internal fun Application.gameServer(games: GameServer = GameServer()) {
             val writer = launch {
                 for (event in events) send(Json.encodeToString(event))
             }
+            var catalog = emptyMap<String, Recording>()
             try {
                 for (frame in incoming) {
                     if (frame !is Frame.Text) {
@@ -77,7 +78,27 @@ internal fun Application.gameServer(games: GameServer = GameServer()) {
                         peer.error("Niepoprawna wiadomość JSON.")
                         continue
                     }
-                    games.command(peer, command)
+                    if (command.type == "import" || command.tracks != null) {
+                        if (command.type !in setOf("import", "create", "join") || peer.roomCode != null) {
+                            peer.error("Import jest dostępny przed wejściem do pokoju.")
+                            continue
+                        }
+                        catalog = emptyMap()
+                        try {
+                            catalog = apple.resolve(command.tracks.orEmpty())
+                        } catch (error: IllegalArgumentException) {
+                            peer.error(error.message ?: "Niepoprawna lista Spotify.")
+                            continue
+                        } catch (_: java.io.IOException) {
+                            peer.error("Apple chwilowo nie odpowiada. Ponów import.")
+                            continue
+                        }
+                        if (command.type == "import") {
+                            peer.send(ServerEvent("catalog", catalogKeys = catalog.keys.toList()))
+                            continue
+                        }
+                    }
+                    games.command(peer, command, catalog)
                 }
             } finally {
                 games.disconnect(peer)

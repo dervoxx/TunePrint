@@ -13,7 +13,9 @@ import kotlin.test.assertTrue
 class GameServerTest {
     private var now = 0L
     private val games = GameServer { now }
-    private val keys = DemoCatalog.keys.take(2)
+    private val catalog = mapOf(importedTrack.id to recording,
+        "A".repeat(22) to recording.copy(key = "apple-234", title = "Drugi"))
+    private val keys = catalog.keys.toList()
 
     private inner class Client {
         val events = mutableListOf<ServerEvent>()
@@ -22,7 +24,7 @@ class GameServerTest {
         val state get() = events.last { it.state != null }.state!!
         val id get() = events.first { it.playerId != null }.playerId!!
         val token get() = events.first { it.token != null }.token!!
-        fun send(cmd: ClientCommand) = games.command(peer, cmd)
+        fun send(cmd: ClientCommand) = games.command(peer, cmd, catalog)
     }
 
     private fun create(rounds: Int = 1) = Client().apply {

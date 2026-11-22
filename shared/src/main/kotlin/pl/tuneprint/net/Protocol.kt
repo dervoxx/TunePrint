@@ -1,6 +1,17 @@
 package pl.tuneprint.net
 
 import kotlinx.serialization.Serializable
+import java.net.URI
+
+@Serializable
+data class ImportTrack(val id: String, val title: String, val artists: List<String>)
+
+fun isApplePreviewUrl(value: String): Boolean {
+    val uri = runCatching { URI(value) }.getOrNull() ?: return false
+    val host = uri.host?.lowercase() ?: return false
+    return uri.scheme.equals("https", true) && uri.rawUserInfo == null && uri.port in setOf(-1, 443) &&
+        uri.rawFragment == null && listOf("mzstatic.com", "itunes.apple.com").any { host == it || host.endsWith(".$it") }
+}
 
 @Serializable
 data class ClientCommand(
@@ -17,6 +28,7 @@ data class ClientCommand(
     val showOwnerCount: Boolean? = null,
     val ownerIds: List<String>? = null,
     val catalogKeys: List<String>? = null,
+    val tracks: List<ImportTrack>? = null,
 )
 
 @Serializable
@@ -27,6 +39,7 @@ data class ServerEvent(
     val token: String? = null,
     val playerId: String? = null,
     val message: String? = null,
+    val catalogKeys: List<String>? = null,
 )
 
 @Serializable
@@ -52,6 +65,7 @@ data class RoomState(
     val ranking: List<NetRank>,
     val result: NetResult?,
     val canStart: Boolean = false,
+    val previewUrl: String? = null,
 )
 
 @Serializable

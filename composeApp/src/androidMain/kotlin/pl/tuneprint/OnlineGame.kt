@@ -1,6 +1,8 @@
 package pl.tuneprint
 
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -11,7 +13,11 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -22,6 +28,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import pl.tuneprint.audio.DemoAudio
 import pl.tuneprint.audio.RoundAudioPlayer
+import pl.tuneprint.catalog.DemoTracks
 import pl.tuneprint.game.GameSession
 import pl.tuneprint.net.ClientCommand
 import pl.tuneprint.net.RoomListing
@@ -53,6 +60,13 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     var catalog by mutableStateOf((saved.get<ArrayList<String>>("catalog")?.toSet()
         ?: profile.getStringSet("catalog", emptySet()).orEmpty()).intersect(DemoAudio.byKey.keys))
         private set
+    internal var topTracks by mutableStateOf<List<RankedTrack>>(emptyList())
+        private set
+    var importing by mutableStateOf(false)
+        private set
+    var importMessage by mutableStateOf<String?>(null)
+        private set
+    private var importJob: Job? = null
     var code by mutableStateOf(saved.get<String>("code") ?: "")
         private set
     var browsing by mutableStateOf(false)
@@ -82,7 +96,10 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private var token: String? = saved["token"]
     private val handler = Handler(Looper.getMainLooper())
-    private val client = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder()
+        .dns(TunePrintDns())
+        .pingInterval(5, TimeUnit.SECONDS)
+        .build()
     private val json = Json { ignoreUnknownKeys = true }
     private var socket: WebSocket? = null
     private var opened = false
@@ -122,9 +139,55 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     }
 
     fun toggleTrack(key: String) {
-        if (busy || state != null) return
+        if (busy || state != null || key !in DemoAudio.byKey) return
         catalog = if (key in catalog) catalog - key else catalog + key
         saved["catalog"] = ArrayList(catalog)
+    }
+
+    fun selectTopTracks() {
+        if (busy || state != null) return
+        catalog = catalog + topTracks.mapNotNull { it.key }
+        saved["catalog"] = ArrayList(catalog)
+    }
+
+    fun importTopTracks() {
+        if (importing || busy || state != null) return
+        val app = getApplication<Application>()
+        importing = true
+        importMessage = null
+        importJob = viewModelScope.launch {
+            try {
+                val spotify = SpotifyTopTracks(app.getString(R.string.spotify_client_id))
+                val imported = spotify.importTracks { address ->
+                    app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                topTracks = imported.map { track ->
+                    RankedTrack(track.id, track.title, track.artists.joinToString(", "),
+                        DemoTracks.match(track.title, track.artists))
+                }
+                if (topTracks.isEmpty()) importMessage = "Spotify nie zwróciło jeszcze najczęściej słuchanych utworów."
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: SpotifyImportException) {
+                importMessage = error.message
+            } catch (_: android.content.ActivityNotFoundException) {
+                importMessage = "Do logowania potrzebna jest przeglądarka."
+            } catch (_: Exception) {
+                importMessage = "Import nie powiódł się. Sprawdź połączenie i spróbuj ponownie."
+            } finally {
+                importing = false
+            }
+        }
+    }
+
+    fun cancelImport() {
+        importJob?.cancel()
+    }
+
+    fun clearTopTracks() {
+        topTracks = emptyList()
+        importMessage = null
     }
 
     fun changeCode(value: String) {
@@ -318,6 +381,8 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     }
 
     fun exit() {
+        cancelImport()
+        clearTopTracks()
         leave()
         active = false
         saved["online"] = false
@@ -421,3 +486,5 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         val timedPhases = setOf("COUNTDOWN", "ROUND", "RESULTS")
     }
 }
+
+internal data class RankedTrack(val id: String, val title: String, val artist: String, val key: String?)

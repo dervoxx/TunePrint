@@ -1,5 +1,7 @@
 package pl.tuneprint.catalog
 
+import java.text.Normalizer
+
 data class DemoTrack(val title: String, val artist: String = "")
 
 object DemoTracks {
@@ -15,4 +17,20 @@ object DemoTracks {
         "demo-09" to DemoTrack("da da da(żyje dla rapu)", "spazma"),
         "demo-10" to DemoTrack("Halo halo z aresztu"),
     )
+
+    /** A recording must match both its title and its full artist credits. */
+    fun match(title: String, artists: List<String>): String? {
+        val trackTitle = normalize(title)
+        val credits = artists.map(::normalize).toSet()
+        if (trackTitle.isEmpty() || credits.isEmpty() || "" in credits) return null
+        return byKey.entries.singleOrNull { (_, track) ->
+            normalize(track.title) == trackTitle &&
+                track.artist.split(" / ").map(::normalize).toSet() == credits
+        }?.key
+    }
+
+    private val separators = Regex("[^\\p{L}\\p{N}]+")
+
+    private fun normalize(text: String) =
+        Normalizer.normalize(text, Normalizer.Form.NFKC).lowercase().replace(separators, " ").trim()
 }

@@ -2,6 +2,8 @@ package pl.tuneprint
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
@@ -9,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -67,6 +70,14 @@ fun OnlineScreens(game: OnlineGame, onExit: () -> Unit) {
 private fun OnlineSettings(game: OnlineGame) {
     var editServer by rememberSaveable { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
+    var showSpotify by rememberSaveable { mutableStateOf(false) }
+    OutlinedButton(onClick = {
+        showSpotify = true
+        if (game.topTracks.isEmpty()) game.importTopTracks()
+    }, enabled = !game.busy, modifier = Modifier.fillMaxWidth()) {
+        Text(if (game.topTracks.isEmpty()) "Importuj top utwory ze Spotify" else "Top utwory ze Spotify")
+    }
+    if (showSpotify) SpotifyTrackDialog(game) { showSpotify = false }
     OutlinedButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
         Text(if (game.catalog.isEmpty()) "Wybierz utwory do gry" else "Moja playlista · ${game.catalog.size}/${DemoAudio.byKey.size}",
             color = MaterialTheme.colorScheme.onSurface)
@@ -93,6 +104,83 @@ private fun OnlineSettings(game: OnlineGame) {
         label = { Text("IP komputera lub adres WebSocket") },
         supportingText = { Text("Użyj adresu podanego przy uruchomieniu serwera.") },
         enabled = !game.busy, modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+private fun SpotifyTrackDialog(game: OnlineGame, close: () -> Unit) {
+    val context = LocalContext.current
+    val tracks = game.topTracks
+    val available = remember(tracks) { tracks.mapNotNull { it.key }.toSet() }
+    val dismiss = { game.cancelImport(); close() }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                androidx.compose.foundation.Image(painterResource(R.drawable.spotify_logo), "Spotify")
+                Text("Twoje top utwory")
+            }
+        },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (game.importing) item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text("Dokończ logowanie w przeglądarce, a następnie wróć do TunePrint.")
+                    }
+                }
+                game.importMessage?.let { message ->
+                    item { Text(message, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+                }
+                if (tracks.isNotEmpty()) {
+                    item {
+                        Text("Utwory z ostatniego półrocza: ${tracks.size}. Dostępne nagrania: ${available.size}.")
+                        if (available.isNotEmpty()) {
+                            TextButton(onClick = game::selectTopTracks,
+                                enabled = !game.catalog.containsAll(available)) { Text("Wybierz wszystkie dostępne") }
+                        }
+                    }
+                    itemsIndexed(tracks, key = { _, track -> track.id }) { index, track ->
+                        val key = track.key
+                        val checked = key != null && key in game.catalog
+                        val select = if (key != null) Modifier.toggleable(checked, role = Role.Checkbox) {
+                            game.toggleTrack(key)
+                        } else Modifier
+                        Row(Modifier.fillMaxWidth().then(select).heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("${index + 1}.", style = MaterialTheme.typography.labelMedium)
+                            Column(Modifier.weight(1f)) {
+                                Text(track.title)
+                                Text(track.artist, style = MaterialTheme.typography.bodySmall)
+                                if (key == null) Text("Brak nagrania w grze", style = MaterialTheme.typography.labelSmall)
+                                TextButton(onClick = {
+                                    val link = android.net.Uri.parse("https://open.spotify.com/track")
+                                        .buildUpon().appendPath(track.id).build()
+                                    try {
+                                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, link))
+                                    } catch (_: android.content.ActivityNotFoundException) {
+                                        android.widget.Toast.makeText(context, "Brak aplikacji do otwarcia linku.",
+                                            android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }) { Text("Otwórz w Spotify") }
+                            }
+                            if (key != null) Checkbox(checked, onCheckedChange = null)
+                        }
+                    }
+                    if (!game.importing) item {
+                        TextButton(onClick = game::clearTopTracks) { Text("Usuń listę z aplikacji") }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = dismiss) { Text(if (game.importing) "Anuluj" else "Gotowe") } },
+        dismissButton = {
+            if (!game.importing) TextButton(onClick = game::importTopTracks) {
+                Text(if (tracks.isEmpty()) "Importuj" else "Importuj ponownie")
+            }
+        },
+    )
 }
 
 @Composable

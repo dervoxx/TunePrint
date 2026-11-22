@@ -1,5 +1,8 @@
 # Uruchomienie Androida
 
+Przy połączeniu z `tuneprint.mliczek.com` Android najpierw pyta systemowy DNS.
+Jeśli ten nie znajdzie adresu, aplikacja ponawia zapytanie przez DNS-over-HTTPS Cloudflare.
+
 Otwórz katalog główny `TunePrint/` w Android Studio obsługującym AGP 8.11.1
 (Narwhal 2025.1.1 lub nowszym). Poczekaj na synchronizację Gradle.
 

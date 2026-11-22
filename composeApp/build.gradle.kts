@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     kotlin("multiplatform")
@@ -24,6 +25,7 @@ kotlin {
         androidMain.dependencies {
             implementation(project(":shared"))
             implementation("com.squareup.okhttp3:okhttp:4.12.0")
+            implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
             implementation("androidx.activity:activity-compose:1.11.0")
         }
     }
@@ -36,6 +38,14 @@ android {
     sourceSets["main"].assets.srcDir(rootProject.file("songs"))
 
     defaultConfig {
+        val localConfig = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+            .asText.map { text -> Properties().apply { text.reader().use(::load) }.getProperty("spotifyClientId", "") }
+        val spotifyClientId = providers.gradleProperty("spotifyClientId")
+            .orElse(providers.environmentVariable("SPOTIFY_CLIENT_ID")).orElse(localConfig).orNull.orEmpty()
+        require(spotifyClientId.isEmpty() || spotifyClientId.matches(Regex("[a-zA-Z0-9]{32}"))) {
+            "Expected a 32-character Spotify Client ID"
+        }
+        resValue("string", "spotify_client_id", spotifyClientId)
         val publicHost = providers.gradleProperty("tuneprintPublicHost").orNull
         if (publicHost != null) {
             require(Regex("[A-Za-z0-9.-]+").matches(publicHost)) { "Expected a public hostname" }

@@ -1,10 +1,21 @@
 package pl.tuneprint.server
 
+import pl.tuneprint.catalog.DemoTracks
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class DemoCatalogTest {
+    @Test
+    fun matchesImportedRecordingsByTitleAndAllArtists() {
+        assertEquals("demo-05", DemoTracks.match("  fps ", listOf("LANEK", "Bedoes 2115")))
+        assertEquals("demo-09", DemoTracks.match("Da da da (żyje dla rapu)", listOf("spazma")))
+        assertEquals(null, DemoTracks.match("FPS", listOf("Bedoes 2115")))
+        assertEquals(null, DemoTracks.match("Frascati (Live)", listOf("Taco Hemingway")))
+        assertEquals(null, DemoTracks.match("Fiji", listOf("Another Artist")))
+        assertEquals(null, DemoTracks.match("Halo halo z aresztu", listOf("")))
+    }
+
     @Test
     fun exposesTenStableKeys() {
         val expected = (1..10).map { "demo-" + it.toString().padStart(2, '0') }

@@ -29,12 +29,17 @@ data class ClientCommand(
     val ownerIds: List<String>? = null,
     val catalogKeys: List<String>? = null,
     val tracks: List<ImportTrack>? = null,
+    val reportProgress: Boolean = false,
 )
+
+@Serializable
+data class CatalogProgress(val checked: Int, val total: Int, val found: Int)
 
 @Serializable
 data class ServerEvent(
     val type: String,
     val state: RoomState? = null,
+    val progress: CatalogProgress? = null,
     val rooms: List<RoomListing> = emptyList(),
     val token: String? = null,
     val playerId: String? = null,

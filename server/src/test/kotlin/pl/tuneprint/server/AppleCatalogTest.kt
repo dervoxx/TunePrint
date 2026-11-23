@@ -12,17 +12,21 @@ internal val importedTrack = ImportTrack("1234567890123456789012", "Fiji", listO
 internal val recording = Recording("apple-123", "Fiji", "Taco Hemingway", "https://audio-ssl.itunes.apple.com/example.m4a")
 
 class AppleCatalogTest {
-    private fun result(title: String, artist: String, url: String = recording.previewUrl) =
-        """{"kind":"song","trackId":123,"trackName":"$title","artistName":"$artist","previewUrl":"$url"}"""
+    @Test fun searchFindsSongIdsForMatchingTitles() {
+        fun row(title: String, kind: String, id: Long) =
+            """{"title":"$title","contentDescriptor":{"kind":"$kind","identifiers":{"storeAdamID":"$id"}}}"""
+        val rows = listOf(row("Panic", "song", 123), row("Panic", "album", 456), row("Other", "song", 789))
+        val page = """<script id="serialized-server-data">[{} ,{"items":[${rows.joinToString()}]}]</script>"""
+        assertEquals(setOf(123L), appleSongIds(page, "panic"))
+    }
 
-    @Test fun fullTitleAndCreditsAreRequired() {
-        val song = ImportTrack(importedTrack.id, "oNE", listOf("A", "B"))
-        val candidates = listOf(result("One (Live)", "A & B"), result("One", "A"), result("one", "A & B", "http://example.org/x"))
-        fun search(rows: List<String>) = matchApple(song, """{"results":[${rows.joinToString()}]}""")
-        assertNull(search(candidates))
-        val found = assertNotNull(search(candidates + result("ONE", "B & A")))
-        assertEquals("apple-123", found.key)
-        assertEquals(recording.previewUrl, found.previewUrl)
+    @Test fun previewRequiresMatchingSongAndArtists() {
+        fun page(title: String, artist: String) = """<script type="application/ld+json">
+            {"audio":{"@type":"MusicRecording","name":"$title","byArtist":[{"name":"$artist"}],
+            "audio":{"@type":"AudioObject","contentUrl":"${recording.previewUrl}"}}}</script>"""
+        assertNull(matchApple(importedTrack, 123, page("Fiji (Live)", recording.artist)))
+        assertNull(matchApple(importedTrack, 123, page("Fiji", "Other")))
+        assertEquals(recording, matchApple(importedTrack, 123, page("Fiji", recording.artist)))
     }
 
     @Test fun onlyAppleHttpsOriginsAreAccepted() {

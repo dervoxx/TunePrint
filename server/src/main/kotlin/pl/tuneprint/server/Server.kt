@@ -13,6 +13,7 @@ import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -81,7 +82,7 @@ internal fun Application.gameServer(games: GameServer = GameServer(), apple: App
             """.trimIndent(), ContentType.Text.Html)
         }
         webSocket("/game") {
-            val events = Channel<ServerEvent>(32)
+            val events = Channel<ServerEvent>(64)
             val peer = Peer { event ->
                 if (events.trySend(event).isFailure) cancel("Client cannot receive updates")
             }
@@ -108,7 +109,16 @@ internal fun Application.gameServer(games: GameServer = GameServer(), apple: App
                         }
                         catalog = emptyMap()
                         try {
-                            catalog = apple.resolve(command.tracks.orEmpty())
+                            catalog = if (command.type == "import") {
+                                // Finish warming the shared cache even if Android suspends the socket.
+                                this@gameServer.async {
+                                    runCatching {
+                                        apple.resolve(command.tracks.orEmpty()) { progress ->
+                                            if (command.reportProgress) events.trySend(ServerEvent("catalogProgress", progress = progress))
+                                        }
+                                    }
+                                }.await().getOrThrow()
+                            } else apple.resolve(command.tracks.orEmpty())
                         } catch (error: IllegalArgumentException) {
                             peer.error(error.message ?: "Niepoprawna lista Spotify.")
                             continue
@@ -117,7 +127,7 @@ internal fun Application.gameServer(games: GameServer = GameServer(), apple: App
                             continue
                         }
                         if (command.type == "import") {
-                            peer.send(ServerEvent("catalog", catalogKeys = catalog.keys.toList()))
+                            events.send(ServerEvent("catalog", catalogKeys = catalog.keys.toList()))
                             continue
                         }
                     }

@@ -88,28 +88,8 @@ private fun SpotifyGate(game: OnlineGame) {
                 Button(onClick = game::prepareCatalog) { Text("Ponów dobieranie fragmentów") }
             }
             OutlinedButton(onClick = game::importTopTracks) { Text("Zaloguj się przez Spotify") }
-            ServerSettings(game)
         }
     }
-}
-
-@Composable
-private fun ServerSettings(game: OnlineGame) {
-    var editServer by rememberSaveable { mutableStateOf(false) }
-    var address by rememberSaveable(game.endpoint) { mutableStateOf(game.endpoint) }
-    TextButton(onClick = { address = game.endpoint; editServer = true }, enabled = !game.busy) {
-        Text("Adres serwera", color = MaterialTheme.colorScheme.secondary)
-    }
-    if (editServer) AlertDialog(onDismissRequest = { editServer = false },
-        title = { Text("Adres serwera") },
-        text = { OutlinedTextField(value = address, onValueChange = { address = it }, singleLine = true,
-            label = { Text("IP komputera lub adres WebSocket") }) },
-        confirmButton = { TextButton(enabled = address.isNotBlank(), onClick = {
-            editServer = false
-            game.changeEndpoint(address.trim())
-            if (game.topTracks.isNotEmpty() && game.catalog.isEmpty()) game.prepareCatalog()
-        }) { Text("Zapisz") } },
-        dismissButton = { TextButton(onClick = { editServer = false }) { Text("Anuluj") } })
 }
 
 @Composable
@@ -147,7 +127,6 @@ private fun OnlineSettings(game: OnlineGame) {
         },
         confirmButton = { TextButton(onClick = { showSpotify = false }) { Text("Gotowe") } },
         dismissButton = { TextButton(onClick = { showSpotify = false; game.importTopTracks() }) { Text("Zmień konto") } })
-    ServerSettings(game)
 }
 
 @Composable

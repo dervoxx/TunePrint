@@ -37,6 +37,5 @@ a aktywność i manifest Androida w `composeApp/src/androidMain/`.
    Każdy telefon odtwarza ten sam fragment z internetu. Po powrocie z tła
    odtwarzanie uwzględnia czas pozostały w rundzie.
 
-Domyślny adres to `wss://tuneprint.mliczek.com/game`. Do testów z [serwerem lokalnym](server.md)
-w emulatorze użyj `ws://10.0.2.2:8080/game`. Testy aplikacji uruchamia
+Aplikacja łączy się z `wss://tuneprint.mliczek.com/game`. Testy aplikacji uruchamia
 `./gradlew :composeApp:testDebugUnitTest`.

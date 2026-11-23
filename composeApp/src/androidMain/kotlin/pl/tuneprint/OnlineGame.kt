@@ -21,7 +21,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -34,34 +33,24 @@ import pl.tuneprint.net.RoomListing
 import pl.tuneprint.net.RoomState
 import pl.tuneprint.net.ServerEvent
 
-/** A bare LAN address uses the bundled server's port and route. Full WebSocket URLs stay explicit. */
-internal fun serverRequest(input: String): Request {
-    val address = input.trim()
-    val url = if (address.startsWith("ws://") || address.startsWith("wss://")) address else {
-        require(address.isNotEmpty() && address.none { it.isWhitespace() || it in "/?#@" })
-        val base = "http://$address".toHttpUrl()
-        val portSpecified = ':' in address.substringAfterLast(']')
-        base.newBuilder().port(if (portSpecified) base.port else 8080).addPathSegment("game").build().toString()
-    }
-    return Request.Builder().url(url).build()
-}
+internal val gameServerRequest = Request.Builder().url("wss://tuneprint.mliczek.com/game").build()
 
 /** Socket callbacks, room changes and playback are serialized on the main thread. */
 class OnlineGame(application: Application, private val saved: SavedStateHandle) : AndroidViewModel(application) {
     private val profile = application.getSharedPreferences("player", Application.MODE_PRIVATE)
-    var endpoint by mutableStateOf(saved.get<String>("endpoint") ?: profile.getString("endpoint", null)
-        ?: application.getString(R.string.default_server_address))
-        private set
     var name by mutableStateOf(saved.get<String>("name") ?: profile.getString("name", null) ?: "")
         private set
     internal var topTracks by mutableStateOf<List<ImportTrack>>(emptyList())
         private set
     var catalog by mutableStateOf(emptySet<String>())
         private set
+    var progress by mutableStateOf(pl.tuneprint.net.CatalogProgress(0, 0, 0))
+        private set
     var preparing by mutableStateOf(false)
         private set
     private var preparedOnSocket = false
     private var startedImport = false
+    private var resumeImport = false
     var importing by mutableStateOf(false)
         private set
     var importMessage by mutableStateOf<String?>(null)
@@ -121,15 +110,6 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         saved["name"] = name
     }
 
-    fun changeEndpoint(value: String) {
-        if (busy || preparing || state != null || endpoint == value) return
-        closeSocket()
-        catalog = emptySet()
-        endpoint = value
-        saved["endpoint"] = value
-        message = null
-    }
-
     fun importTopTracks() {
         if (importing || preparing || busy || state != null) return
         message = null
@@ -174,9 +154,12 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     fun prepareCatalog() {
         if (topTracks.isEmpty() || preparing || busy || state != null) return
+        progress = pl.tuneprint.net.CatalogProgress(0, topTracks.take(50).distinctBy { it.id }.size, 0)
+        saved["pendingRanking"] = json.encodeToString(topTracks)
+        resumeImport = false
         preparing = true
         importMessage = null
-        requestEntry(ClientCommand("import", tracks = topTracks))
+        requestEntry(ClientCommand("import", tracks = topTracks, reportProgress = true))
     }
 
     fun changeCode(value: String) {
@@ -215,14 +198,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private fun connect(initial: ClientCommand) {
         closeSocket()
-        val request = try {
-            serverRequest(endpoint)
-        } catch (_: IllegalArgumentException) {
-            busy = false
-            showRequestError("Wpisz IP komputera, np. 192.168.1.10, lub pełny adres WebSocket.")
-            return
-        }
-        socket = client.newWebSocket(request, object : WebSocketListener() {
+        socket = client.newWebSocket(gameServerRequest, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) = onCurrent(webSocket) {
                 opened = true
                 send(initial)
@@ -244,7 +220,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = onCurrent(webSocket) {
-                disconnected("Brak połączenia z serwerem. Sprawdź adres i sieć.")
+                disconnected("Brak połączenia z serwerem. Sprawdź połączenie z internetem.")
             }
         })
     }
@@ -268,9 +244,11 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private fun receive(event: ServerEvent, receivedAt: Long) {
         when (event.type) {
+            "catalogProgress" -> if (preparing) event.progress?.let { progress = it }
             "catalog" -> {
                 if (!preparing) return
                 catalog = event.catalogKeys.orEmpty().toSet().intersect(topTracks.map { it.id }.toSet())
+                saved.remove<String>("pendingRanking")
                 preparedOnSocket = catalog.isNotEmpty()
                 busy = false
                 preparing = false
@@ -285,13 +263,10 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
                 event.token?.let {
                     token = it
                     saved["streamToken"] = it
-                    val serverUrl = serverRequest(endpoint).url
                     profile.edit {
                         putString("name", name)
                         remove("catalog")
-                        if (serverUrl.username.isEmpty() && serverUrl.password.isEmpty() && serverUrl.query == null) {
-                            putString("endpoint", endpoint)
-                        } else remove("endpoint")
+                        remove("endpoint")
                     }
                 }
                 event.playerId?.let {
@@ -328,6 +303,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     }
 
     private fun disconnected(reason: String) {
+        if (preparing && !foreground) resumeImport = true
         closeSocket()
         sessionConnected = false
         busy = false
@@ -435,7 +411,14 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     private fun ensureStartup() {
         if (!foreground) return
         if (token != null) connectForSession()
-        else if (!startedImport) importTopTracks()
+        else if (!startedImport || resumeImport) {
+            val pending = saved.get<String>("pendingRanking")
+            if (pending == null) importTopTracks() else {
+                startedImport = true
+                topTracks = json.decodeFromString<List<ImportTrack>>(pending)
+                prepareCatalog()
+            }
+        }
     }
 
     fun pause() {

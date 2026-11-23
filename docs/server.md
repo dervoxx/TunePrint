@@ -2,9 +2,7 @@
 
 W katalogu projektu uruchom `./gradlew :server:run` (Windows: `.\gradlew.bat :server:run`).
 Serwer nasłuchuje pod `ws://localhost:8080/game`. Port można zmienić zmienną
-`PORT`. Emulator Androida łączy się z `ws://10.0.2.2:8080/game`, a urządzenie
-w tej samej sieci Wi-Fi używa adresu LAN komputera. Do udostępnienia usługi
-poza siecią lokalną potrzebny jest szyfrowany transport `wss://`.
+`PORT`.
 
 Paczkę do uruchomienia na innym komputerze tworzy `./gradlew :server:distZip`.
 Rozpakuj `server/build/distributions/server.zip` i uruchom `server/bin/server.bat`
@@ -16,7 +14,7 @@ na Windows albo `server/bin/server` na Linuxie z Javą 17 lub nowszą.
   [Protocol.kt](../shared/src/main/kotlin/pl/tuneprint/net/Protocol.kt).
   `list` zwraca wolne pokoje. `create` i `join` przyjmują nazwę i pole
   `tracks` z metadanymi Spotify. Dołączenie wymaga również sześciocyfrowego kodu.
-  Serwer przeszukuje polski katalog iTunes, dla pełnego Top 50 każdego gracza.
+  Serwer przeszukuje polski katalog Apple Music i pobiera adres podglądu ze strony nagrania dla pełnego Top 50 każdego gracza.
   Przy starcie losuje z połączonej puli jeden różny utwór na każdą ustawioną rundę. Potrzebne jest co najmniej
   jedno dopasowanie. Opcjonalnie `import` przyjmuje tę samą listę i zwraca
   zdarzenie `catalog` z dostępnymi `catalogKeys` do użycia na tym połączeniu.
@@ -49,8 +47,4 @@ Testy reguł i protokołu uruchamia `./gradlew :server:test`.
 ## Cloudflare Tunnel
 
 Na hoście tunelu ustaw serwerowi `HOST=127.0.0.1` i wolny `PORT`.
-W Cloudflare wskaż usługę `http://127.0.0.1:PORT`. W aplikacji w polu
-**Adres serwera** wpisz `wss://<publiczna-nazwa>/game`.
-Do zbudowania APK z tym adresem na pierwszym uruchomieniu służy
-`./gradlew :composeApp:assembleDebug -PtuneprintPublicHost=<publiczna-nazwa>`.
-Adres wybrany wcześniej na telefonie ma pierwszeństwo.
+W Cloudflare skieruj host `tuneprint.mliczek.com` do usługi `http://127.0.0.1:PORT`.

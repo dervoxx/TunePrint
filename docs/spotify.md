@@ -1,6 +1,6 @@
 # Top utwory gracza
 
-W Spotify Developer Dashboard wybierz aplikację z dostępem do Web API. W **Settings → Redirect URIs** wpisz dokładnie `http://127.0.0.1/spotify/callback`. Spotify pozwala pominąć port przy rejestracji adresu loopback. TunePrint przy każdym logowaniu otwiera wolny port na telefonie. [Przekierowania Spotify](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri)
+W Spotify Developer Dashboard wybierz aplikację TunePrint z dostępem do Web API. W **Settings → Redirect URIs** dodaj dokładnie `https://tuneprint.mliczek.com/spotify/callback` i zapisz ustawienia. Android otwiera ten link w TunePrint. Weryfikacja domeny wymaga pliku `/.well-known/assetlinks.json` z odciskiem certyfikatu podpisującego APK.
 
 W trybie deweloperskim właściciel aplikacji potrzebuje Spotify Premium. W **Settings → Users Management** dodaj konta uczestników. Standardowy limit wynosi pięć kont. [Tryb deweloperski](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)
 

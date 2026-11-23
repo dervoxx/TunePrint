@@ -1,12 +1,11 @@
 package pl.tuneprint
 
 import java.io.IOException
-import java.net.InetAddress
-import java.net.ServerSocket
-import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,18 +17,44 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import okhttp3.FormBody
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.ByteString.Companion.encodeUtf8
 import okio.ByteString.Companion.toByteString
-import okio.buffer
-import okio.source
 
 internal data class SpotifyTrack(val id: String, val title: String, val artists: List<String>, val isrc: String?)
 
 internal class SpotifyImportException(message: String) : IOException(message)
+
+internal object SpotifyCallback {
+    const val redirect = "https://tuneprint.mliczek.com/spotify/callback"
+    private val pending = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<String>>()
+
+    suspend fun waitForCode(state: String, launch: suspend () -> Unit): String {
+        val response = CompletableDeferred<String>()
+        pending[state] = response
+        try {
+            launch()
+            return withTimeoutOrNull(TimeUnit.MINUTES.toMillis(5)) { response.await() }
+                ?: throw SpotifyImportException("Upłynął czas logowania. Spróbuj ponownie.")
+        } finally {
+            pending.remove(state)
+        }
+    }
+
+    fun receive(address: String): Boolean {
+        val url = address.toHttpUrlOrNull() ?: return false
+        if (url.newBuilder().query(null).fragment(null).build().toString() != redirect) return false
+        val response = pending[url.queryParameterValues("state").singleOrNull() ?: return false] ?: return false
+        if (url.queryParameter("error") != null) {
+            return response.completeExceptionally(SpotifyImportException("Spotify odmówiło dostępu."))
+        }
+        val code = url.queryParameterValues("code").singleOrNull()?.takeIf { it.isNotBlank() } ?: return false
+        return response.complete(code)
+    }
+}
 
 internal class SpotifyTopTracks(
     private val clientId: String,
@@ -41,24 +66,21 @@ internal class SpotifyTopTracks(
         return withContext(Dispatchers.IO) {
             val verifier = nonce()
             val state = nonce()
-            val codeAndRedirect = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { listener ->
-                listener.soTimeout = 400
-                val redirect = "http://127.0.0.1:${listener.localPort}/spotify/callback".toHttpUrl()
+            val code = SpotifyCallback.waitForCode(state) {
                 val url = "https://accounts.spotify.com/authorize".toHttpUrl().newBuilder()
                     .addQueryParameter("client_id", clientId)
                     .addQueryParameter("response_type", "code")
                     .addQueryParameter("scope", "user-top-read")
-                    .addQueryParameter("redirect_uri", redirect.toString())
+                    .addQueryParameter("redirect_uri", SpotifyCallback.redirect)
                     .addQueryParameter("state", state)
                     .addQueryParameter("code_challenge_method", "S256")
                     .addQueryParameter("code_challenge", verifier.encodeUtf8().sha256().base64Url().trimEnd('='))
                     .build()
                 withContext(caller) { openBrowser(url.toString()) }
-                awaitCode(listener, redirect, state) to redirect
             }
             val form = FormBody.Builder().add("grant_type", "authorization_code")
-                .add("client_id", clientId).add("code", codeAndRedirect.first)
-                .add("redirect_uri", codeAndRedirect.second.toString()).add("code_verifier", verifier).build()
+                .add("client_id", clientId).add("code", code)
+                .add("redirect_uri", SpotifyCallback.redirect).add("code_verifier", verifier).build()
             val token = json(Request.Builder().url("https://accounts.spotify.com/api/token").post(form).build())
                 .text("access_token") ?: throw SpotifyImportException("Spotify nie zwróciło tokenu dostępu.")
             val tracks = linkedMapOf<String, SpotifyTrack>()
@@ -82,46 +104,6 @@ internal class SpotifyTopTracks(
             }
             tracks.values.toList()
         }
-    }
-
-    private suspend fun awaitCode(listener: ServerSocket, redirect: HttpUrl, state: String): String {
-        val start = System.nanoTime()
-        while (System.nanoTime() - start < TimeUnit.MINUTES.toNanos(5)) {
-            currentCoroutineContext().ensureActive()
-            val socket = try { listener.accept() } catch (_: SocketTimeoutException) { continue }
-            socket.use {
-                socket.soTimeout = 1500
-                val target = try {
-                    val source = socket.source().buffer()
-                    source.timeout().deadline(2, TimeUnit.SECONDS)
-                    val request = source.readUtf8LineStrict(8192).split(' ')
-                    var remaining = 16384L
-                    while (true) {
-                        val header = source.readUtf8LineStrict(remaining)
-                        if (header.isEmpty()) break
-                        remaining -= header.length + 2L
-                        if (remaining <= 0) throw IOException()
-                    }
-                    request.getOrNull(1)?.takeIf { request.first() == "GET" && it.startsWith("/spotify/callback?") }
-                } catch (_: IOException) { null }
-                val url = target?.let { redirect.resolve(it) }
-                val valid = url != null && url.queryParameterValues("state") == listOf(state)
-                val code = url?.queryParameterValues("code")?.singleOrNull()?.takeIf { it.isNotBlank() }
-                val denied = url?.queryParameter("error") != null
-                val accepted = valid && (denied || code != null)
-                val message = if (accepted) "Wróć do aplikacji TunePrint." else "Nieprawidłowe przekierowanie."
-                val response = if (accepted) "200 OK" else "400 Bad Request"
-                runCatching {
-                    socket.getOutputStream().write(
-                        ("HTTP/1.1 $response\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\n" +
-                            "Connection: close\r\nContent-Length: ${message.toByteArray().size}\r\n\r\n$message").toByteArray()
-                    )
-                }
-                if (accepted && denied) throw SpotifyImportException("Logowanie Spotify zostało odrzucone.")
-                if (accepted && code != null) return code
-            }
-        }
-        throw SpotifyImportException("Upłynął czas logowania. Spróbuj ponownie.")
     }
 
     private fun json(request: Request): JsonObject = http.newCall(request).execute().use { response ->

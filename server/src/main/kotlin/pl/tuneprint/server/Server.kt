@@ -5,6 +5,9 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.routing.routing
+import io.ktor.server.routing.get
+import io.ktor.server.response.respondText
+import io.ktor.http.ContentType
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
@@ -57,6 +60,26 @@ internal fun Application.gameServer(games: GameServer = GameServer(), apple: App
         }
     }
     routing {
+        get("/.well-known/assetlinks.json") {
+            call.respondText(
+                """[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"pl.tuneprint","sha256_cert_fingerprints":["B7:CC:0F:94:B6:0F:5B:C0:A8:FA:58:E1:40:53:F1:48:49:CE:28:D5:D7:08:DD:12:89:F9:5C:1F:D7:F8:0A:FB"]}}]""",
+                ContentType.Application.Json
+            )
+        }
+        get("/spotify/callback") {
+            call.response.headers.append("Cache-Control", "no-store")
+            call.response.headers.append("Referrer-Policy", "no-referrer")
+            call.respondText("""
+                <!doctype html><html lang="pl"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+                <title>Powrót do TunePrint</title><p><a id="open">Wróć do TunePrint</a></p>
+                <script>
+                const query = new URLSearchParams(location.search);
+                document.getElementById('open').href = 'intent://tuneprint.mliczek.com/spotify/callback?' +
+                    query.toString() + '#Intent;scheme=https;package=pl.tuneprint;end';
+                history.replaceState(null, '', location.pathname);
+                </script></html>
+            """.trimIndent(), ContentType.Text.Html)
+        }
         webSocket("/game") {
             val events = Channel<ServerEvent>(32)
             val peer = Peer { event ->

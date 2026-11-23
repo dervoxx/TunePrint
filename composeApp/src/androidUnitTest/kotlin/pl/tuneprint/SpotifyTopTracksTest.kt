@@ -1,7 +1,5 @@
 package pl.tuneprint
 
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -61,10 +59,10 @@ class SpotifyTopTracksTest {
             assertEquals("S256", login.queryParameter("code_challenge_method"))
             assertEquals("user-top-read", login.queryParameter("scope"))
             redirect = login.queryParameter("redirect_uri")!!
-            assertEquals("127.0.0.1", redirect.toHttpUrl().host)
+            assertEquals(SpotifyCallback.redirect, redirect)
             challenge = login.queryParameter("code_challenge")!!
-            assertEquals(400, callback("$redirect?code=bad&state=wrong"))
-            assertEquals(200, callback("$redirect?code=one-use-code&state=${login.queryParameter("state")}"))
+            assertEquals(false, SpotifyCallback.receive("$redirect?code=bad&state=wrong"))
+            assertEquals(true, SpotifyCallback.receive("$redirect?code=one-use-code&state=${login.queryParameter("state")}"))
         }
         val tracks = SpotifyTopTracks(clientId, client).importTracks { opened.complete(it) }
         browser.await()
@@ -77,27 +75,19 @@ class SpotifyTopTracksTest {
         val opened = CompletableDeferred<String>()
         val browser = async(Dispatchers.IO) {
             val login = opened.await().toHttpUrl()
-            callback("${login.queryParameter("redirect_uri")}?error=access_denied&state=${login.queryParameter("state")}")
+            SpotifyCallback.receive("${login.queryParameter("redirect_uri")}?error=access_denied&state=${login.queryParameter("state")}")
         }
         assertFailsWith<SpotifyImportException> {
             SpotifyTopTracks(clientId).importTracks { opened.complete(it) }
         }
-        assertEquals(200, browser.await())
+        assertEquals(true, browser.await())
     }
 
-    @Test fun cancellingImportClosesItsLoopbackPort() = runBlocking {
+    @Test fun cancellingImportRejectsLateCallback() = runBlocking {
         val opened = CompletableDeferred<String>()
         val import = async { SpotifyTopTracks(clientId).importTracks { opened.complete(it) } }
-        val redirect = opened.await().toHttpUrl().queryParameter("redirect_uri")!!
+        val login = opened.await().toHttpUrl()
         import.cancelAndJoin()
-        assertFailsWith<java.net.ConnectException> { callback(redirect) }
-        Unit
-    }
-
-    private fun callback(url: String): Int {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 2000
-        connection.readTimeout = 2000
-        return try { connection.responseCode } finally { connection.disconnect() }
+        assertEquals(false, SpotifyCallback.receive("${SpotifyCallback.redirect}?code=late&state=${login.queryParameter("state")}"))
     }
 }

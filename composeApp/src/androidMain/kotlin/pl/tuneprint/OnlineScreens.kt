@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import pl.tuneprint.game.GameSession
 import pl.tuneprint.net.ClientCommand
@@ -75,13 +76,22 @@ private fun SpotifyGate(game: OnlineGame) {
         androidx.compose.foundation.Image(painterResource(R.drawable.spotify_logo), "Spotify")
         Text("Twoje najczęściej słuchane utwory", style = MaterialTheme.typography.titleLarge)
         val status = when {
-            game.preparing -> "Dobieranie fragmentów Apple Music do Twoich top utworów. Może to potrwać kilka minut."
+            game.preparing -> "Szukanie fragmentów w Apple Music. Możesz przełączyć aplikację."
             game.importing -> "Dokończ logowanie w przeglądarce, a następnie wróć do TunePrint."
             else -> game.importMessage ?: "Połącz konto Spotify, żeby przygotować utwory do gry."
         }
         Text(status, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         if (game.preparing || game.importing) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (game.preparing) {
+                val progress = game.progress
+                LinearProgressIndicator(progress = { progress.checked.toFloat() / progress.total.coerceAtLeast(1) },
+                    modifier = Modifier.fillMaxWidth())
+                Text(
+                    "Sprawdzone utwory: ${progress.checked} z ${progress.total}\nZnalezione fragmenty: ${progress.found}",
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            } else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             if (game.importing) TextButton(onClick = game::cancelImport) { Text("Anuluj logowanie") }
         } else {
             if (game.topTracks.isNotEmpty()) {

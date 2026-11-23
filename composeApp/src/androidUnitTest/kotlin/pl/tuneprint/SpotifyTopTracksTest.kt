@@ -45,6 +45,7 @@ class SpotifyTopTracksTest {
                 assertEquals("medium_term", url.queryParameter("time_range"))
                 val offset = url.queryParameter("offset")!!
                 requests += offset
+                assertEquals((50 - offset.toInt()).toString(), url.queryParameter("limit"))
                 if (offset == "0") {
                     """{"next":"https://other.invalid/untrusted","items":[{"id":"1","name":"First","artists":[{"name":"A"},{"name":"B"}],"external_ids":{"isrc":"PL123"}}]}"""
                 } else {

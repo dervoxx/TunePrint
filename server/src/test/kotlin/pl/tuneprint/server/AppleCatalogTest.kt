@@ -50,23 +50,28 @@ class AppleCatalogTest {
         assertEquals(2, count)
     }
 
-    @Test fun importStopsAtFiveRecordingsOrTwelveAttempts() = runBlocking {
-        val tracks = (1..16).map { importedTrack.copy(id = it.toString().padStart(22, '0'), title = "Song $it") }
-        var calls = 0
-        val allFound = AppleCatalog { calls++; recording.copy(key = it.id) }
-        assertEquals(tracks.take(5).map { it.id }, allFound.resolve(tracks).keys.toList())
-        assertEquals(5, calls)
-        calls = 0
-        val noneFound = AppleCatalog { calls++; null }
-        assertTrue(noneFound.resolve(tracks).isEmpty())
-        assertEquals(12, calls)
+    @Test fun entireTopFiftyIsEligibleIncludingTheLastPosition() = runBlocking {
+        val tracks = (1..55).map { position ->
+            importedTrack.copy(id = position.toString().padStart(22, '0'),
+                title = if (position <= 34) "Unavailable" else "Song $position")
+        }
+        val apple = AppleCatalog { track ->
+            recording.copy(key = track.id).takeUnless { track.title == "Unavailable" }
+        }
+        assertEquals(tracks.subList(34, 50).map { it.id }, apple.resolve(tracks).keys.toList())
     }
 
-    @Test fun anInterruptedSearchPreservesAlreadyPlayableRecordings() = runBlocking {
+    @Test fun retryAfterInterruptionCompletesTheRankingUsingCachedMatches() = runBlocking {
         val second = importedTrack.copy(id = "A".repeat(22), title = "Another")
-        val apple = AppleCatalog { if (it == importedTrack) recording else throw java.io.IOException() }
-        assertEquals(mapOf(importedTrack.id to recording), apple.resolve(listOf(importedTrack, second)))
-        assertFailsWith<java.io.IOException> { apple.resolve(listOf(second)) }
-        Unit
+        val searched = mutableListOf<String>()
+        val apple = AppleCatalog {
+            searched.add(it.id)
+            if (searched.size == 2) throw java.io.IOException()
+            recording.copy(key = it.id)
+        }
+        val tracks = listOf(importedTrack, second)
+        assertFailsWith<java.io.IOException> { apple.resolve(tracks) }
+        assertEquals(tracks.map { it.id }, apple.resolve(tracks).keys.toList())
+        assertEquals(listOf(importedTrack.id, second.id, second.id), searched)
     }
 }

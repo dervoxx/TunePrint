@@ -38,19 +38,14 @@ internal class AppleCatalog(private val search: suspend (ImportTrack) -> Recordi
         require(batches.tryAcquire()) { "Serwer przetwarza inne importy. Spróbuj ponownie za chwilę." }
         try {
             val result = linkedMapOf<String, Recording>()
-            for (track in tracks.distinctBy { it.id }.take(12)) {
+            for (track in tracks.take(50).distinctBy { it.id }) {
                 val key = track.title to track.artists
                 val value = stripes[Math.floorMod(key.hashCode(), stripes.size)].withLock {
                     val cached = synchronized(cache) { cache[key] }
                     if (cached != null && cached.expires > now()) return@withLock cached.result
                     val recording = connections.withPermit {
                         awaitSearchSlot()
-                        try {
-                            search(track)
-                        } catch (error: IOException) {
-                            if (result.isEmpty()) throw error
-                            return result
-                        }
+                        search(track)
                     }
                     synchronized(cache) {
                         cache[key] = Cached(recording, now() + if (recording == null) 600_000 else 3_600_000)
@@ -58,10 +53,7 @@ internal class AppleCatalog(private val search: suspend (ImportTrack) -> Recordi
                     }
                     recording
                 }
-                if (value != null) {
-                    result[track.id] = value
-                    if (result.values.distinctBy { it.key }.size >= 5) break
-                }
+                if (value != null) result[track.id] = value
             }
             return result
         } finally {

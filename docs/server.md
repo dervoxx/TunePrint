@@ -16,8 +16,8 @@ na Windows albo `server/bin/server` na Linuxie z Javą 17 lub nowszą.
   [Protocol.kt](../shared/src/main/kotlin/pl/tuneprint/net/Protocol.kt).
   `list` zwraca wolne pokoje. `create` i `join` przyjmują nazwę i pole
   `tracks` z metadanymi Spotify. Dołączenie wymaga również sześciocyfrowego kodu.
-  Serwer przeszukuje polski katalog iTunes, aż znajdzie pięć nagrań z fragmentem
-  lub sprawdzi dwanaście pierwszych unikalnych pozycji. Potrzebne jest co najmniej
+  Serwer przeszukuje polski katalog iTunes, dla pełnego Top 50 każdego gracza.
+  Przy starcie losuje z połączonej puli jeden różny utwór na każdą ustawioną rundę. Potrzebne jest co najmniej
   jedno dopasowanie. Opcjonalnie `import` przyjmuje tę samą listę i zwraca
   zdarzenie `catalog` z dostępnymi `catalogKeys` do użycia na tym połączeniu.
 - Pierwszy komunikat `state` zawiera prywatny `token` i `playerId` obok stanu

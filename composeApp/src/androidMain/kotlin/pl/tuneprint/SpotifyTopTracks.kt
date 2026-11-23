@@ -63,13 +63,13 @@ internal class SpotifyTopTracks(
                 .text("access_token") ?: throw SpotifyImportException("Spotify nie zwróciło tokenu dostępu.")
             val tracks = linkedMapOf<String, SpotifyTrack>()
             var offset = 0
-            while (offset < 100) {
+            while (offset < 50) {
                 currentCoroutineContext().ensureActive()
                 val page = json(Request.Builder()
-                    .url("https://api.spotify.com/v1/me/top/tracks?time_range=medium_term&limit=50&offset=$offset")
+                    .url("https://api.spotify.com/v1/me/top/tracks?time_range=medium_term&limit=${50 - offset}&offset=$offset")
                     .header("Authorization", "Bearer $token").build())
                 val items = page["items"] as? JsonArray ?: throw SpotifyImportException("Brak listy utworów w odpowiedzi Spotify.")
-                for (item in items.filterIsInstance<JsonObject>()) {
+                for (item in items.take(50 - offset).filterIsInstance<JsonObject>()) {
                     val id = item.text("id") ?: continue
                     val title = item.text("name") ?: continue
                     val artists = (item["artists"] as? JsonArray).orEmpty()
@@ -80,7 +80,7 @@ internal class SpotifyTopTracks(
                 if (items.isEmpty() || page.text("next") == null) break
                 offset += items.size
             }
-            tracks.values.take(100)
+            tracks.values.toList()
         }
     }
 

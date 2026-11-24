@@ -1,5 +1,7 @@
 package pl.tuneprint
 
+import pl.tuneprint.net.RankingPeriod
+import pl.tuneprint.net.ImportTrack
 import java.io.IOException
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -23,8 +25,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.ByteString.Companion.encodeUtf8
 import okio.ByteString.Companion.toByteString
-
-internal data class SpotifyTrack(val id: String, val title: String, val artists: List<String>, val isrc: String?)
 
 internal class SpotifyImportException(message: String) : IOException(message)
 
@@ -60,7 +60,7 @@ internal class SpotifyTopTracks(
     private val clientId: String,
     private val http: OkHttpClient = OkHttpClient.Builder().callTimeout(15, TimeUnit.SECONDS).build(),
 ) {
-    suspend fun importTracks(openBrowser: (String) -> Unit): List<SpotifyTrack> {
+    suspend fun importTracks(match: suspend (RankingPeriod, Int, List<ImportTrack>) -> Set<String>, openBrowser: (String) -> Unit): List<ImportTrack> {
         if (clientId.isBlank()) throw SpotifyImportException("Brakuje identyfikatora aplikacji Spotify.")
         val caller = currentCoroutineContext()[ContinuationInterceptor] ?: Dispatchers.Main
         return withContext(Dispatchers.IO) {
@@ -83,24 +83,34 @@ internal class SpotifyTopTracks(
                 .add("redirect_uri", SpotifyCallback.redirect).add("code_verifier", verifier).build()
             val token = json(Request.Builder().url("https://accounts.spotify.com/api/token").post(form).build())
                 .text("access_token") ?: throw SpotifyImportException("Spotify nie zwróciło tokenu dostępu.")
-            val tracks = linkedMapOf<String, SpotifyTrack>()
-            var offset = 0
-            while (offset < 50) {
-                currentCoroutineContext().ensureActive()
-                val page = json(Request.Builder()
-                    .url("https://api.spotify.com/v1/me/top/tracks?time_range=medium_term&limit=${50 - offset}&offset=$offset")
-                    .header("Authorization", "Bearer $token").build())
-                val items = page["items"] as? JsonArray ?: throw SpotifyImportException("Brak listy utworów w odpowiedzi Spotify.")
-                for (item in items.take(50 - offset).filterIsInstance<JsonObject>()) {
-                    val id = item.text("id") ?: continue
-                    val title = item.text("name") ?: continue
-                    val artists = (item["artists"] as? JsonArray).orEmpty()
-                        .filterIsInstance<JsonObject>().mapNotNull { it.text("name") }
-                    if (artists.isEmpty()) continue
-                    tracks.putIfAbsent(id, SpotifyTrack(id, title, artists, (item["external_ids"] as? JsonObject)?.text("isrc")))
+            val tracks = linkedMapOf<String, ImportTrack>()
+            for (period in RankingPeriod.entries) {
+                var offset = 0
+                var found = 0
+                val seen = mutableSetOf<String>()
+                while (found < 50) {
+                    currentCoroutineContext().ensureActive()
+                    val limit = 50 - found
+                    val page = json(Request.Builder()
+                        .url("https://api.spotify.com/v1/me/top/tracks?time_range=${period.spotify}&limit=$limit&offset=$offset")
+                        .header("Authorization", "Bearer $token").build())
+                    val items = page["items"] as? JsonArray ?: throw SpotifyImportException("Brak listy utworów w odpowiedzi Spotify.")
+                    val candidates = items.take(limit).filterIsInstance<JsonObject>().mapNotNull { item ->
+                        val id = item.text("id") ?: return@mapNotNull null
+                        val title = item.text("name") ?: return@mapNotNull null
+                        val artists = (item["artists"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { it.text("name") }
+                        if (artists.isEmpty() || !seen.add(id)) null else ImportTrack(id, title, artists, setOf(period))
+                    }
+                    if (candidates.isNotEmpty()) {
+                        val keys = withContext(caller) { match(period, found, candidates) }
+                        for (track in candidates.filter { it.id in keys }) {
+                            tracks[track.id] = track.copy(periods = tracks[track.id]?.periods.orEmpty() + period)
+                            found++
+                        }
+                    }
+                    offset += items.size
+                    if (items.isEmpty() || page.text("next") == null || offset >= (page.text("total")?.toIntOrNull() ?: Int.MAX_VALUE)) break
                 }
-                if (items.isEmpty() || page.text("next") == null) break
-                offset += items.size
             }
             tracks.values.toList()
         }

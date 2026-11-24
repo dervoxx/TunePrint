@@ -27,6 +27,9 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import pl.tuneprint.audio.RoundAudioPlayer
 import pl.tuneprint.game.GameSession
+import kotlinx.coroutines.CompletableDeferred
+import pl.tuneprint.net.RankingPeriod
+import pl.tuneprint.net.CatalogProgress
 import pl.tuneprint.net.ImportTrack
 import pl.tuneprint.net.ClientCommand
 import pl.tuneprint.net.RoomListing
@@ -48,9 +51,11 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         private set
     var preparing by mutableStateOf(false)
         private set
-    private var preparedOnSocket = false
+    var importPeriod by mutableStateOf(RankingPeriod.LONG)
+        private set
+    private var pageReply: CompletableDeferred<Set<String>>? = null
+    private var previouslyFound = 0
     private var startedImport = false
-    private var resumeImport = false
     var importing by mutableStateOf(false)
         private set
     var importMessage by mutableStateOf<String?>(null)
@@ -122,11 +127,14 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         importJob = viewModelScope.launch {
             try {
                 val spotify = SpotifyTopTracks(app.getString(R.string.spotify_client_id))
-                val imported = spotify.importTracks { address ->
+                val imported = spotify.importTracks(::matchPage) { address ->
                     app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-                useSpotifyRanking(imported)
+                topTracks = imported
+                catalog = imported.map { it.id }.toSet()
+                if (catalog.isEmpty()) importMessage = "W rankingach Spotify nie znaleziono nagrań z fragmentem."
+
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: SpotifyImportException) {
@@ -136,6 +144,8 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
             } catch (_: Exception) {
                 importMessage = "Import nie powiódł się. Sprawdź połączenie i spróbuj ponownie."
             } finally {
+                preparing = false
+                busy = false
                 importing = false
             }
         }
@@ -145,21 +155,27 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         importJob?.cancel()
     }
 
-    internal fun useSpotifyRanking(imported: List<SpotifyTrack>) {
-        topTracks = imported.map { ImportTrack(it.id, it.title, it.artists) }
-        if (topTracks.isEmpty()) {
-            importMessage = "Spotify nie zwróciło jeszcze najczęściej słuchanych utworów."
-        } else prepareCatalog()
-    }
-
-    fun prepareCatalog() {
-        if (topTracks.isEmpty() || preparing || busy || state != null) return
-        progress = pl.tuneprint.net.CatalogProgress(0, topTracks.take(50).distinctBy { it.id }.size, 0)
-        saved["pendingRanking"] = json.encodeToString(topTracks)
-        resumeImport = false
+    private suspend fun matchPage(period: RankingPeriod, found: Int, tracks: List<ImportTrack>): Set<String> {
+        importing = false
         preparing = true
-        importMessage = null
-        requestEntry(ClientCommand("import", tracks = topTracks, reportProgress = true))
+        importPeriod = period
+        previouslyFound = found
+        progress = CatalogProgress(0, tracks.size, found)
+        for (attempt in 1..3) {
+            val reply = CompletableDeferred<Set<String>>()
+            pageReply = reply
+            try {
+                requestEntry(ClientCommand("import", tracks = tracks, reportProgress = true))
+                return reply.await()
+            } catch (error: java.io.IOException) {
+                if (attempt == 3) throw error
+                closeSocket()
+                kotlinx.coroutines.delay(attempt * 1000L)
+            } finally {
+                pageReply = null
+            }
+        }
+        error("Import interrupted")
     }
 
     fun changeCode(value: String) {
@@ -177,8 +193,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
         if (busy || name.isBlank() || catalog.isEmpty()) return
         requestEntry(ClientCommand(if (join) "join" else "create", name = name.trim(),
             code = if (join) code else null,
-            catalogKeys = catalog.toList().takeIf { preparedOnSocket },
-            tracks = topTracks.filter { it.id in catalog }.takeUnless { preparedOnSocket }))
+            tracks = topTracks))
     }
 
     private fun requestEntry(command: ClientCommand) {
@@ -244,15 +259,10 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private fun receive(event: ServerEvent, receivedAt: Long) {
         when (event.type) {
-            "catalogProgress" -> if (preparing) event.progress?.let { progress = it }
+            "catalogProgress" -> if (preparing) event.progress?.let { progress = it.copy(found = previouslyFound + it.found) }
             "catalog" -> {
-                if (!preparing) return
-                catalog = event.catalogKeys.orEmpty().toSet().intersect(topTracks.map { it.id }.toSet())
-                saved.remove<String>("pendingRanking")
-                preparedOnSocket = catalog.isNotEmpty()
                 busy = false
-                preparing = false
-                if (catalog.isEmpty()) importMessage = "Żaden z Twoich top utworów nie ma dostępnego fragmentu."
+                pageReply?.complete(event.catalogKeys.orEmpty().toSet())
             }
             "rooms" -> {
                 rooms = event.rooms
@@ -303,7 +313,6 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     }
 
     private fun disconnected(reason: String) {
-        if (preparing && !foreground) resumeImport = true
         closeSocket()
         sessionConnected = false
         busy = false
@@ -318,13 +327,12 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
 
     private fun showRequestError(reason: String) {
         if (preparing) {
-            preparing = false
+            pageReply?.completeExceptionally(SpotifyImportException(reason))
             importMessage = reason
         } else message = reason
     }
 
     private fun closeSocket() {
-        preparedOnSocket = false
         handler.removeCallbacks(reconnect)
         val old = socket
         socket = null
@@ -411,14 +419,7 @@ class OnlineGame(application: Application, private val saved: SavedStateHandle) 
     private fun ensureStartup() {
         if (!foreground) return
         if (token != null) connectForSession()
-        else if (!startedImport || resumeImport) {
-            val pending = saved.get<String>("pendingRanking")
-            if (pending == null) importTopTracks() else {
-                startedImport = true
-                topTracks = json.decodeFromString<List<ImportTrack>>(pending)
-                prepareCatalog()
-            }
-        }
+        else if (!startedImport) importTopTracks()
     }
 
     fun pause() {

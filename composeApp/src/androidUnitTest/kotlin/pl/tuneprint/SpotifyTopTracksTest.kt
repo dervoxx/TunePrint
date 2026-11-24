@@ -40,14 +40,18 @@ class SpotifyTopTracksTest {
             } else {
                 assertEquals("api.spotify.com", url.host)
                 assertEquals("Bearer test-token", request.header("Authorization"))
-                assertEquals("medium_term", url.queryParameter("time_range"))
+                val period = url.queryParameter("time_range")!!
                 val offset = url.queryParameter("offset")!!
-                requests += offset
-                assertEquals((50 - offset.toInt()).toString(), url.queryParameter("limit"))
+                requests += "$period/$offset"
+                assertEquals(if (offset == "0") "50" else "1", url.queryParameter("limit"))
                 if (offset == "0") {
-                    """{"next":"https://other.invalid/untrusted","items":[{"id":"1","name":"First","artists":[{"name":"A"},{"name":"B"}],"external_ids":{"isrc":"PL123"}}]}"""
+                    val items = (1..50).joinToString { id ->
+                        """{"id":"$id","name":"Track $id","artists":[{"name":"A"}]}"""
+                    }
+                    """{"next":"https://other.invalid/untrusted","items":[$items]}"""
                 } else {
-                    """{"next":null,"items":[{"id":"1","name":"First","artists":[{"name":"A"}]},{"id":"2","name":"Second","artists":[{"name":"C"}]}]}"""
+                    assertEquals("50", offset)
+                    """{"next":"more","items":[{"id":"51","name":"Track 51","artists":[{"name":"A"}]}]}"""
                 }
             }
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
@@ -64,11 +68,11 @@ class SpotifyTopTracksTest {
             assertEquals(false, SpotifyCallback.receive("$redirect?code=bad&state=wrong"))
             assertEquals(true, SpotifyCallback.receive("$redirect?code=one-use-code&state=${login.queryParameter("state")}"))
         }
-        val tracks = SpotifyTopTracks(clientId, client).importTracks { opened.complete(it) }
+        val tracks = SpotifyTopTracks(clientId, client).importTracks({ _, _, page -> page.map { it.id }.filterNot { it == "1" }.toSet() }) { opened.complete(it) }
         browser.await()
-        assertEquals(listOf("0", "1"), requests)
-        assertEquals(listOf(SpotifyTrack("1", "First", listOf("A", "B"), "PL123"),
-            SpotifyTrack("2", "Second", listOf("C"), null)), tracks)
+        assertEquals(pl.tuneprint.net.RankingPeriod.entries.flatMap { listOf("${it.spotify}/0", "${it.spotify}/50") }, requests)
+        assertEquals((2..51).map { it.toString() }, tracks.map { it.id })
+        assertEquals(pl.tuneprint.net.RankingPeriod.entries.toSet(), tracks.first().periods)
     }
 
     @Test fun userCanDenyAuthorization() = runBlocking {
@@ -78,14 +82,14 @@ class SpotifyTopTracksTest {
             SpotifyCallback.receive("${login.queryParameter("redirect_uri")}?error=access_denied&state=${login.queryParameter("state")}")
         }
         assertFailsWith<SpotifyImportException> {
-            SpotifyTopTracks(clientId).importTracks { opened.complete(it) }
+            SpotifyTopTracks(clientId).importTracks({ _, _, _ -> emptySet() }) { opened.complete(it) }
         }
         assertEquals(true, browser.await())
     }
 
     @Test fun cancellingImportRejectsLateCallback() = runBlocking {
         val opened = CompletableDeferred<String>()
-        val import = async { SpotifyTopTracks(clientId).importTracks { opened.complete(it) } }
+        val import = async { SpotifyTopTracks(clientId).importTracks({ _, _, _ -> emptySet() }) { opened.complete(it) } }
         val login = opened.await().toHttpUrl()
         import.cancelAndJoin()
         assertEquals(false, SpotifyCallback.receive("${SpotifyCallback.redirect}?code=late&state=${login.queryParameter("state")}"))

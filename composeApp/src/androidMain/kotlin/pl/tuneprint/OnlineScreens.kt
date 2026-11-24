@@ -76,7 +76,7 @@ private fun SpotifyGate(game: OnlineGame) {
         androidx.compose.foundation.Image(painterResource(R.drawable.spotify_logo), "Spotify")
         Text("Twoje najczęściej słuchane utwory", style = MaterialTheme.typography.titleLarge)
         val status = when {
-            game.preparing -> "Szukanie fragmentów w Apple Music. Możesz przełączyć aplikację."
+            game.preparing -> "Apple Music · ${game.importPeriod.label}. Możesz przełączyć aplikację."
             game.importing -> "Dokończ logowanie w przeglądarce, a następnie wróć do TunePrint."
             else -> game.importMessage ?: "Połącz konto Spotify, żeby przygotować utwory do gry."
         }
@@ -87,16 +87,13 @@ private fun SpotifyGate(game: OnlineGame) {
                 LinearProgressIndicator(progress = { progress.checked.toFloat() / progress.total.coerceAtLeast(1) },
                     modifier = Modifier.fillMaxWidth())
                 Text(
-                    "Sprawdzone utwory: ${progress.checked} z ${progress.total}\nZnalezione fragmenty: ${progress.found}",
+                    "Sprawdzone w tej partii: ${progress.checked} z ${progress.total}\nFragmenty z tego okresu: ${progress.found}/50",
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center,
                 )
             } else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             if (game.importing) TextButton(onClick = game::cancelImport) { Text("Anuluj logowanie") }
         } else {
-            if (game.topTracks.isNotEmpty()) {
-                Button(onClick = game::prepareCatalog) { Text("Ponów dobieranie fragmentów") }
-            }
             OutlinedButton(onClick = game::importTopTracks) { Text("Zaloguj się przez Spotify") }
         }
     }
@@ -114,12 +111,12 @@ private fun OnlineSettings(game: OnlineGame) {
         text = {
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { Text("Top utwory z ostatniego półrocza: ${game.topTracks.size}. Z fragmentem do gry: ${game.catalog.size}.") }
+                item { Text("Utwory z fragmentem w trzech rankingach: ${game.catalog.size}") }
                 itemsIndexed(game.topTracks, key = { _, track -> track.id }) { index, track ->
                     Column {
                         Text("${index + 1}. ${track.title}", style = MaterialTheme.typography.titleSmall)
                         Text(track.artists.joinToString(", "), style = MaterialTheme.typography.bodySmall)
-                        Text(if (track.id in game.catalog) "W puli gry" else "Brak fragmentu",
+                        Text(track.periods.joinToString(" · ") { it.label },
                             style = MaterialTheme.typography.labelSmall)
                         TextButton(onClick = {
                             val link = android.net.Uri.parse("https://open.spotify.com/track").buildUpon()

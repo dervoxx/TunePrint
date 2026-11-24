@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import pl.tuneprint.game.GameSession
+import pl.tuneprint.net.RankingPeriod
 import pl.tuneprint.net.ClientCommand
 import pl.tuneprint.net.RoomState
 import pl.tuneprint.ui.*
@@ -158,7 +159,7 @@ private fun OnlineRoom(room: RoomState, game: OnlineGame, onLeave: () -> Unit) {
                 !room.canStart -> "Potrzeba 3 połączonych osób"
                 else -> "Rozpocznij grę"
             },
-            modeLabel = modes[room.mode], ownerHintsAvailable = room.mode == "OWNERS",
+            modeLabel = "${modes[room.mode]} · ${room.period.label}", ownerHintsAvailable = room.mode == "OWNERS",
             onShare = {
                 val share = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(android.content.Intent.EXTRA_TEXT, "Dołącz do mojego pokoju w TunePrint. Kod: ${room.code}")
@@ -166,6 +167,16 @@ private fun OnlineRoom(room: RoomState, game: OnlineGame, onLeave: () -> Unit) {
             },
             modeControl = {
                 Column {
+                    Text("Okres słuchania", style = MaterialTheme.typography.titleMedium)
+                    RankingPeriod.entries.forEach { period ->
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .selectable(selected = period == room.period, enabled = host && game.sessionConnected,
+                                role = Role.RadioButton, onClick = { game.command(ClientCommand("configure", period = period)) }),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = period == room.period, onClick = null)
+                            Text(period.label, Modifier.padding(start = 12.dp))
+                        }
+                    }
                     Text("Tryb gry", style = MaterialTheme.typography.titleMedium)
                     modes.forEach { (mode, label) ->
                         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)

@@ -1,5 +1,7 @@
 package pl.tuneprint.server
 
+import pl.tuneprint.net.RankingPeriod
+
 import pl.tuneprint.net.ClientCommand
 import pl.tuneprint.net.NetAnswer
 import pl.tuneprint.net.NetRank
@@ -17,6 +19,7 @@ internal class GameRoom(val code: String, first: Seat) {
         private set
     var roundCount = minOf(3, first.catalog.size)
         private set
+    private var period = RankingPeriod.MEDIUM.takeIf { p -> first.catalog.any { p in it.periods } } ?: first.catalog.first().periods.first()
     private var capacity = 4
     private var mode = "OWNERS"
     private var showOwnerCount = false
@@ -26,11 +29,11 @@ internal class GameRoom(val code: String, first: Seat) {
     private var tracks = emptyList<CatalogTrack>()
     private val track get() = tracks[roundNumber - 1]
     private var audioKey = ""
-    private fun pool(selectedMode: String) = roomCatalog(seats.values)
+    private fun pool(selectedMode: String, selectedPeriod: RankingPeriod = period) = roomCatalog(seats.values, selectedPeriod)
         .filter { RoundScoring.isEligible(selectedMode, it, seats.keys) }
     private val maxRounds get() = pool(mode).size
     val canJoin get() = phase == Phase.LOBBY && seats.size < capacity
-    private val canStart get() = phase == Phase.LOBBY && seats.values.count { it.peer != null } >= 3
+    private val canStart get() = phase == Phase.LOBBY && roundCount > 0 && maxRounds > 0 && seats.values.count { it.peer != null } >= 3
     val empty get() = seats.values.none { it.token != null }
     val timed get() = phase == Phase.COUNTDOWN || phase == Phase.ROUND || phase == Phase.RESULTS
 
@@ -47,10 +50,12 @@ internal class GameRoom(val code: String, first: Seat) {
         val selectedMode = cmd.mode ?: mode
         require(limit in 3..8 && limit >= seats.size) { "Niepoprawny limit graczy." }
         require(selectedMode in setOf("OWNERS", "TITLE", "ARTIST")) { "Nieznany tryb gry." }
-        val available = pool(selectedMode).size
+        val selectedPeriod = cmd.period ?: period
+        val available = pool(selectedMode, selectedPeriod).size
         require(available > 0) { "W katalogach brakuje utworów dla tego trybu." }
-        val rounds = cmd.roundCount ?: roundCount.coerceAtMost(available)
+        val rounds = cmd.roundCount ?: roundCount.coerceIn(1, available)
         require(rounds in 1..available) { "Niepoprawna liczba rund." }
+        period = selectedPeriod
         capacity = limit
         roundCount = rounds
         mode = selectedMode
@@ -131,6 +136,9 @@ internal class GameRoom(val code: String, first: Seat) {
 
     private fun fitSettingsToRoster() {
         if (maxRounds == 0) mode = "OWNERS"
+        if (maxRounds == 0) {
+            period = RankingPeriod.entries.firstOrNull { pool(mode, it).isNotEmpty() } ?: period
+        }
         roundCount = roundCount.coerceAtMost(maxRounds)
     }
 
@@ -195,7 +203,7 @@ internal class GameRoom(val code: String, first: Seat) {
 
     fun state(now: Long) = RoomState(
         code = code, hostId = hostId, players = seats.values.map { it.player },
-        capacity = capacity, roundCount = roundCount, maxRounds = maxRounds,
+        period = period, capacity = capacity, roundCount = roundCount, maxRounds = maxRounds,
         showOwnerCount = showOwnerCount, mode = mode, phase = phase.name, roundNumber = roundNumber,
         remainingMs = if (timed) (deadline - now).coerceAtLeast(0) else 0,
         audioKey = if (phase == Phase.COUNTDOWN || phase == Phase.ROUND) audioKey else null,

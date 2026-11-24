@@ -1,5 +1,7 @@
 package pl.tuneprint.server
 
+import pl.tuneprint.net.RankingPeriod
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -23,7 +25,7 @@ import java.net.URI
 import java.net.URLEncoder
 import java.text.Normalizer
 
-internal data class Recording(val key: String, val title: String, val artist: String, val previewUrl: String)
+internal data class Recording(val key: String, val title: String, val artist: String, val previewUrl: String, val periods: Set<RankingPeriod> = setOf(RankingPeriod.MEDIUM))
 
 internal class AppleCatalog(private val search: (suspend (ImportTrack) -> Recording?)? = null) {
     private data class Cached(val result: Recording?, val expires: Long)
@@ -35,7 +37,7 @@ internal class AppleCatalog(private val search: (suspend (ImportTrack) -> Record
 
     suspend fun resolve(tracks: List<ImportTrack>, onProgress: suspend (CatalogProgress) -> Unit = {}): Map<String, Recording> {
         require(tracks.size in 1..100 && tracks.all { track ->
-            track.id.matches(idPattern) && track.title.validText() && track.artists.size in 1..32 &&
+            track.periods.isNotEmpty() && track.id.matches(idPattern) && track.title.validText() && track.artists.size in 1..32 &&
                 track.artists.all { it.validText() } && track.artists.joinToString(" / ").length <= 200
         }) { "Niepoprawna lista utworów Spotify (maksymalnie 100)." }
         require(batches.tryAcquire()) { "Serwer przetwarza inne importy. Spróbuj ponownie za chwilę." }
@@ -52,7 +54,7 @@ internal class AppleCatalog(private val search: (suspend (ImportTrack) -> Record
                         if (recording != null) found++
                         onProgress(CatalogProgress(checked, ranking.size, found))
                     }
-                    recording?.let { track.id to it }
+                    recording?.let { track.id to it.copy(periods = track.periods) }
                 } }.awaitAll().filterNotNull().toMap()
             }
         } finally {

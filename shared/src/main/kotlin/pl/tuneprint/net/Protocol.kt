@@ -4,7 +4,14 @@ import kotlinx.serialization.Serializable
 import java.net.URI
 
 @Serializable
-data class ImportTrack(val id: String, val title: String, val artists: List<String>)
+enum class RankingPeriod(val spotify: String, val label: String) {
+    LONG("long_term", "All-time (ranking Spotify)"),
+    MEDIUM("medium_term", "Ostatnie 6 miesięcy"),
+    SHORT("short_term", "Ostatni miesiąc"),
+}
+
+@Serializable
+data class ImportTrack(val id: String, val title: String, val artists: List<String>, val periods: Set<RankingPeriod> = setOf(RankingPeriod.MEDIUM))
 
 fun isApplePreviewUrl(value: String): Boolean {
     val uri = runCatching { URI(value) }.getOrNull() ?: return false
@@ -29,6 +36,7 @@ data class ClientCommand(
     val ownerIds: List<String>? = null,
     val catalogKeys: List<String>? = null,
     val tracks: List<ImportTrack>? = null,
+    val period: RankingPeriod? = null,
     val reportProgress: Boolean = false,
 )
 
@@ -69,6 +77,7 @@ data class RoomState(
     val readyIds: List<String>,
     val ranking: List<NetRank>,
     val result: NetResult?,
+    val period: RankingPeriod = RankingPeriod.MEDIUM,
     val canStart: Boolean = false,
     val previewUrl: String? = null,
 )

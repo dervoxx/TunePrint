@@ -65,7 +65,7 @@ internal class GameServer(
         require(name.length in 1..20 && name.none(Char::isISOControl)) { "Podaj nazwę od 1 do 20 znaków." }
         val keys = cmd.catalogKeys?.toSet() ?: catalog.keys
         require(keys.isNotEmpty() && catalog.keys.containsAll(keys)) { "Do gry potrzeba utworów Spotify z dostępnym fragmentem Apple." }
-        val seat = Seat(name, keys.map(catalog::getValue).distinctBy { it.key }, peer)
+        val seat = Seat(name, keys.map(catalog::getValue), peer)
         val room = if (cmd.type == "create") {
             require(rooms.size < 128) { "Osiągnięto limit pokoi." }
             val code = generateSequence { Random.nextInt(100_000, 1_000_000).toString() }.first { it !in rooms }

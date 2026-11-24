@@ -10,6 +10,7 @@ import io.ktor.websocket.readText
 import io.ktor.websocket.send
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import pl.tuneprint.net.RankingPeriod
 import pl.tuneprint.net.ClientCommand
 import pl.tuneprint.net.ServerEvent
 import java.util.concurrent.atomic.AtomicLong
@@ -56,6 +57,38 @@ class GameSocketTest {
             assertTrue(results.all { it == results.first() })
             assertNull(results.first().previewUrl)
             assertEquals(listOf(100, 100, 100), results.first().ranking.map { it.points })
+        } finally {
+            sockets.forEach { it.close() }
+        }
+    }
+
+    @Test
+    fun hostSelectsWhichRankingsContributeRecordingsAndOwners() = testApplication {
+        val now = AtomicLong(0)
+        application { gameServer(GameServer(now::get), AppleCatalog { recording.copy(key = it.id) }) }
+        val client = createClient { install(WebSockets) }
+        val sockets = List(3) { client.webSocketSession("/game") }
+        try {
+            val host = sockets.first()
+            val short = importedTrack.copy(id = "B".repeat(22), title = "Short", periods = setOf(RankingPeriod.SHORT))
+            host.command(ClientCommand("create", name = "A", tracks = listOf(importedTrack, short)))
+            val admission = host.until { it.token != null }
+            for ((i, guest) in sockets.drop(1).withIndex()) {
+                guest.command(ClientCommand("join", name = "Guest $i", code = admission.state!!.code,
+                    tracks = listOf(short.copy(periods = setOf(RankingPeriod.MEDIUM)))))
+                guest.until { it.token != null }
+            }
+            sockets[1].command(ClientCommand("configure", period = RankingPeriod.SHORT))
+            sockets[1].until { it.type == "error" }
+            host.command(ClientCommand("configure", period = RankingPeriod.SHORT))
+            val lobby = host.until { it.state?.period == RankingPeriod.SHORT }.state!!
+            assertEquals(1, lobby.maxRounds)
+            host.command(ClientCommand("start"))
+            host.until { it.state?.phase == "COUNTDOWN" }
+            now.set(3000)
+            for (peer in sockets) peer.command(ClientCommand("answer", roundNumber = 1, ownerIds = listOf(admission.playerId!!)))
+            val final = host.until { it.state?.phase == "FINISHED" }.state!!
+            assertEquals(listOf(admission.playerId), final.result!!.ownerIds)
         } finally {
             sockets.forEach { it.close() }
         }

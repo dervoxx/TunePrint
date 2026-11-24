@@ -1,5 +1,7 @@
 package pl.tuneprint.server
 
+import pl.tuneprint.net.RankingPeriod
+
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
@@ -118,7 +120,12 @@ internal fun Application.gameServer(games: GameServer = GameServer(), apple: App
                                         }
                                     }
                                 }.await().getOrThrow()
-                            } else apple.resolve(command.tracks.orEmpty())
+                            } else {
+                                val tracks = command.tracks.orEmpty()
+                                require(tracks.size in 1..150 && tracks.all { it.periods.isNotEmpty() } &&
+                                    RankingPeriod.entries.all { period -> tracks.count { period in it.periods } <= 50 })
+                                tracks.chunked(50).flatMap { apple.resolve(it).toList() }.toMap()
+                            }
                         } catch (error: IllegalArgumentException) {
                             peer.error(error.message ?: "Niepoprawna lista Spotify.")
                             continue

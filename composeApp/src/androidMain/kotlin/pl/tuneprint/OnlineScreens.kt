@@ -200,7 +200,9 @@ private fun OnlineRoom(room: RoomState, game: OnlineGame, onLeave: () -> Unit) {
                 "ARTIST" -> "Kto wykonuje ten utwór?"
                 else -> "Czyj to utwór?"
             })
-        "RESULTS", "FINISHED" -> room.result?.let { result ->
+        "FINISHED" -> FinalPodium(players, room.result, room.players, host && game.sessionConnected,
+            { game.command(ClientCommand("replay")) }, onLeave)
+        "RESULTS" -> room.result?.let { result ->
             ResultsScreen(room.roundNumber, room.roundCount, result.title, result.artist,
                 room.players.filter { it.id in result.ownerIds }.map { it.name }, players, seconds,
                 game.playerId in room.readyIds, { game.command(ClientCommand("ready", roundNumber = room.roundNumber)) },
